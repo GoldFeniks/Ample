@@ -1,15 +1,22 @@
 #pragma once
 #include <cmath>
+#include <array>
 #include <cstddef>
+#include <type_traits>
 #include "utils/types.hpp"
 
 namespace acstc {
 
-    namespace types = utils::types;
-
     namespace series {
 
-        namespace impl {
+        namespace __impl {
+
+            template<typename T>
+            struct coefficients {
+
+                T a, b, c;
+
+            };
 
             template<typename T>
             static constexpr auto pi = T(M_PI);
@@ -21,45 +28,77 @@ namespace acstc {
             static constexpr auto arg = J * pi<T> / den<T, N>;
 
             template<typename T, size_t J, size_t N>
-            static constexpr auto a = T(2) / den<T, N> * std::pow(std::sin(arg<T, J, N>), 2);
+            static constexpr auto b = T(2) / den<T, N> * std::pow(std::sin(arg<T, J, N>), 2);
 
             template<typename T, size_t J, size_t N>
-            static constexpr auto b = std::pow(std::cos(arg<T, J, N>), 2);
+            static constexpr auto c = std::pow(std::cos(arg<T, J, N>), 2);
 
-            template<typename V, typename T, size_t N, size_t J = N>
-            struct series {
+            template<typename T, size_t N, size_t M, typename = std::enable_if_t<1 <= M>>
+            struct setter {
 
-                static auto call(const V& q) {
-                    return a<T, J, N> * q / (T(1) + b<T, J, N> * q) + series<V, T, N, J - 1>::call(q);
+                static void set(std::array<coefficients<T>, N>& coefficients) {
+                    setter<T, N, M - 1>::set(coefficients);
+                    coefficients[M - 1] = {T(0), b<T, M, N>, c<T, M, N>};
                 }
 
             };
 
-            template<typename V, typename T, size_t N>
-            struct series<V, T, N, 0> {
+            template<typename T, size_t N>
+            struct setter<T, N, 1> {
 
-                static auto call(const V& q) {
-                    return V(0);
+                static void set(std::array<coefficients<T>, N>& coefficients) {
+                    coefficients[0] = {T(1), b<T, 1, N> + c<T, 1, N>, c<T, 1, N>};
                 }
 
             };
 
-        }// namespace impl
+            template<typename T, size_t N>
+            static auto get_coefficients() {
+                std::array<coefficients<T>, N> result;
+                setter<T, N, N>::set(result);
+                return result;
+            }
 
-        template<size_t N, typename Val = types::complex_t, typename Arg = types::real_t>
-        class pade_series {
+        }// namespace __impl
+
+        template<size_t N, typename T = types::real_t, typename = std::enable_if_t<0 != N>>
+        class pade_series_coefficients {
 
         public:
 
-            pade_series() = default;
+            pade_series_coefficients() = default;
 
-            auto operator()(const Val& q) const {
-                return Arg(1) + _series::call(q);
+            auto begin() {
+                return coefficients.begin();
+            }
+
+            auto begin() const {
+                return coefficients.begin();
+            }
+
+            auto end() {
+                return coefficients.end();
+            }
+
+            auto end() const {
+                return coefficients.end();
+            }
+
+            auto operator[](const size_t i) {
+                return coefficients[i];
+            }
+
+            auto operator[](const size_t i) const {
+                return coefficients[i];
+            }
+
+            auto size() const {
+                return N;
             }
 
         private:
 
-            using _series = impl::series<Val, Arg, N>;
+            const std::array<__impl::coefficients<T>, N> coefficients = __impl::get_coefficients<T, N>();
 
         };
 
