@@ -38,7 +38,7 @@ namespace acstc {
                     const auto d = (Arg(2) / sq_hy + sq_k0 - std::pow(k[j], 2)) / sq_k0;
                     for (size_t i = 0; i < b0.size(); ++i) {
                         cb[i] = g0[i] + g1[i] * d;
-                        nb[i] = b0[i] + g0[i] * d;
+                        nb[i] = b0[i] + b1[i] * d;
                     }
 
                     auto cv = init[j];
@@ -46,11 +46,11 @@ namespace acstc {
                     for (size_t n = 1; n < nx; ++n) {
                         for (size_t i = 0; i < b0.size(); ++i) {
                             const auto a = ca[i];
-                            const auto c = cb[i];
-                            nv[0] = cv[0] * c + cv[1] * a;
-                            nv.back() = cv[ny - 2] * a + cv.back() * c;
+                            const auto b = cb[i];
+                            nv[0] = cv[0] * b + cv[1] * a;
+                            nv.back() = cv[ny - 2] * a + cv.back() * b;
                             for (size_t m = 1; m < ny - 1; ++m)
-                                nv[m] = a * (cv[m - 1] + cv[m + 1]) + cv[m] * c;
+                                nv[m] = (cv[m - 1] + cv[m + 1]) * a + cv[m] * b;
                             _thomas_solve(na[i], nb[i], nv);
                             std::swap(cv, nv);
                         }
@@ -83,19 +83,18 @@ namespace acstc {
         }
 
         static void _thomas_solve(const Val& a, const Val& b, types::vector1d_t<Val>& f) {
-            types::vector1d_t<Val> buff(f.size());
-            buff[0] = b;
-            for (size_t i = 1; i < f.size(); ++i) {
-                const auto w = a / buff[i - 1];
-                buff[i] -= w * a;
-                f[i] -= w * f[i - 1];
+            static types::vector1d_t<Val> alpha(f.size());
+            static types::vector1d_t<Val> beta(f.size());
+            alpha[0] = -a / b;
+            beta[0] = f[0] / b;
+            for (size_t i = 0; i < f.size() - 1; ++i) {
+                const auto c = a * alpha[i] + b;
+                alpha[i + 1] = -a / c;
+                beta[i + 1] = (f[i] - a * beta[i]) / c;
             }
-            f.back() /= buff.back();
-            auto i = f.size() - 1;
-            do {
-                --i;
-                f[i] = (f[i] - a * f[i + 1]) / buff[i];
-            } while (i);
+            f.back() = (f.back() - a * beta.back()) / (b + a * alpha.back());
+            for (size_t i = f.size() - 1; i > 0; --i)
+                f[i - 1] = alpha[i] * f[i] + beta[i];
         }
     };
 
