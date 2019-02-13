@@ -79,8 +79,16 @@ namespace acstc {
 
         }// namespace writer_bases
 
+        template<typename T>
+        struct basic_writer {
+
+            virtual bool write(const T*, size_t) = 0;
+            virtual bool write(const types::vector1d_t<T>&) = 0;
+
+        };
+
         template<typename T, typename Base>
-        class writer : protected Base {
+        class writer : public basic_writer<T>, protected Base {
 
         public:
 
@@ -98,11 +106,11 @@ namespace acstc {
                 return true;
             }
 
-            bool write(const T* data, const size_t count) {
+            bool write(const T* data, const size_t count) override {
                 return write(data, data + count);
             };
 
-            bool write(const std::vector<T>& data) {
+            bool write(const types::vector1d_t<T>& data) override {
                 return write(data.cbegin(), data.cend());
             }
 
