@@ -1,17 +1,23 @@
 #pragma once
+#include <vector>
 #include <complex>
 
 namespace acstc {
 
-    namespace utils {
+    namespace types {
 
-        namespace types {
+        using real_t = double;
+        using complex_t = std::complex<real_t>;
 
-            using real_t = double;
-            using complex_t = std::complex<real_t>;
+        template<typename T>
+        using vector1d_t = std::vector<T>;
 
-        }// namespace types
+        template<typename T>
+        using vector2d_t = std::vector<std::vector<T>>;
 
-    }// namespace utils
+        using cvector1d_t = vector1d_t<complex_t>;
+        using cvector2d_t = vector2d_t<complex_t>;
+
+    }// namespace types
 
 }// namespace acstc
