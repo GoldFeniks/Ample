@@ -31,7 +31,7 @@ namespace acstc {
             const auto [g0, g1, b0, b1, ca, na] = _calc_coefficients(coefficients, k0, sq_k0, hx, hy, sq_hy);
             return [nx, ny, k0, sq_k0, hx, hy, sq_hy, b0, b1, g0, g1, ca, na, coefficients]
                 (const types::vector2d_t<Val>& init, const types::vector1d_t<Arg>& k,
-                        const size_t past_n, utils::basic_writer<Val>& writer) {
+                        const size_t past_n, auto&& callback) {
                 types::vector1d_t<Val> nv(ny);
                 std::array<Val, A::size> cb, s0;
                 std::array<types::vector1d_t<Val>, A::size> ss, va, vb, fv, lv;
@@ -44,7 +44,7 @@ namespace acstc {
                     lv[i].resize(nx);
                 }
 
-                const auto thomas_solver = _get_thomas_solver(ny);
+                auto thomas_solver = _get_thomas_solver(ny);
 
                 for (size_t j = 0; j < init.size(); ++j) {
                     const auto nb = k[j] / k0;
@@ -92,7 +92,7 @@ namespace acstc {
                     }
 
                     auto cv = init[j];
-                    writer.write(cv);
+                    callback(cv);
 
                     for (size_t n = 1; n < nx; ++n) {
                         for (size_t i = 0; i < b0.size(); ++i) {
@@ -114,7 +114,7 @@ namespace acstc {
                             fv[i][n] = cv[0];
                             lv[i][n] = cv.back();
                         }
-                        writer.write(cv);
+                        callback(cv);
                     }
                 }
             };
@@ -158,18 +158,18 @@ namespace acstc {
         }
 
         static auto _get_thomas_solver(const size_t n) {
-            return [n](const types::vector1d_t<Val>& a, const types::vector1d_t<Val>& b, types::vector1d_t<Val>& d) {
-                static types::vector1d_t<Val> c(n);
-                c[0] = a[0] / b[0];
-                d[0] /= b[0];
-                for (size_t i = 1; i < n - 1; ++i) {
-                    const auto w = b[i] - a[i] * c[i - 1];
-                    c[i] = a[i] / w;
-                    d[i] = (d[i] - a[i] * d[i - 1]) / w;
-                }
-                d.back() = (d.back() - a.back() * d[n - 2]) / (b.back() - a.back() * c[n - 2]);
-                for (size_t i = n - 1; i > 0; --i)
-                    d[i - 1] -= c[i - 1] * d[i];
+            return [n, c=types::vector1d_t<Val>(n)]
+                (const types::vector1d_t<Val>& a, const types::vector1d_t<Val>& b, types::vector1d_t<Val>& d) mutable {
+                    c[0] = a[0] / b[0];
+                    d[0] /= b[0];
+                    for (size_t i = 1; i < n - 1; ++i) {
+                        const auto w = b[i] - a[i] * c[i - 1];
+                        c[i] = a[i] / w;
+                        d[i] = (d[i] - a[i] * d[i - 1]) / w;
+                    }
+                    d.back() = (d.back() - a.back() * d[n - 2]) / (b.back() - a.back() * c[n - 2]);
+                    for (size_t i = n - 1; i > 0; --i)
+                        d[i - 1] -= c[i - 1] * d[i];
             };
         }
 

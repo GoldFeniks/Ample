@@ -79,47 +79,45 @@ namespace acstc {
 
         }// namespace writer_bases
 
-        template<typename T>
-        struct basic_writer {
-
-            virtual bool write(const T*, size_t) = 0;
-            virtual bool write(const types::vector1d_t<T>&) = 0;
-
-        };
-
         template<typename T, typename Base>
-        class writer : public basic_writer<T>, protected Base {
+        class writer : protected Base {
 
         public:
 
             using value_type = T;
 
             template<typename... Args>
-            explicit writer(const size_t step, Args&&... args) : _step(step), Base(std::forward<Args>(args)...) {}
+            explicit writer(Args&&... args) : Base(std::forward<Args>(args)...) {}
 
             template<typename It>
-            bool write(It begin, It end) {
-                if (_num_written++ % _step)
-                    return false;
+            void write(It begin, It end) {
                 this->before_write();
                 while (begin != end)
                     this->write_one(*(begin++));
                 this->after_write();
-                return true;
             }
 
-            bool write(const T* data, const size_t count) override {
-                return write(data, data + count);
+            void write(const T* data, const size_t count) {
+                write(data, data + count);
             };
 
-            bool write(const types::vector1d_t<T>& data) override {
-                return write(data.cbegin(), data.cend());
+            void write(const types::vector1d_t<T>& data) {
+                write(data.cbegin(), data.cend());
             }
 
-        protected:
+            void write(const T& value) {
+                this->before_write();
+                this->write_one(value);
+                this->after_write();
+            }
 
-            const size_t _step;
-            size_t _num_written = 0;
+            void operator()(const types::vector1d_t<T>& data) {
+                write(data);
+            }
+
+            void operator()(const T& value) {
+                write(value);
+            }
 
         };
 
@@ -128,8 +126,8 @@ namespace acstc {
 
         public:
 
-            explicit text_writer(const std::string& filename, const size_t step = 1, const std::string& separator = " ") :
-                writer<T, writer_bases::text_writer_base<T>>(step, filename, separator) {}
+            explicit text_writer(const std::string& filename, const std::string& separator = " ") :
+                writer<T, writer_bases::text_writer_base<T>>(filename, separator) {}
 
         };
 
@@ -139,8 +137,8 @@ namespace acstc {
         public:
 
             template<typename F, typename... Args>
-            explicit converter_writer(const F& convert, const size_t step = 1, Args&&... args) :
-                    writer<T, writer_bases::converter_writer_base<T, Base>>(step, convert, std::forward<Args>(args)...) {}
+            explicit converter_writer(const F& convert, Args&&... args) :
+                    writer<T, writer_bases::converter_writer_base<T, Base>>(convert, std::forward<Args>(args)...) {}
 
         };
 
