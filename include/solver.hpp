@@ -30,7 +30,8 @@ namespace acstc {
             const auto sq_hy = std::pow(hy, 2);
             const auto [g0, g1, b0, b1, ca, na] = _calc_coefficients(coefficients, k0, sq_k0, hx, hy, sq_hy);
             return [nx, ny, k0, sq_k0, hx, hy, sq_hy, b0, b1, g0, g1, ca, na, coefficients]
-                (const types::vector2d_t<Val>& init, const types::vector1d_t<Arg>& k, utils::basic_writer<Val>& writer) {
+                (const types::vector2d_t<Val>& init, const types::vector1d_t<Arg>& k,
+                        const size_t past_n, utils::basic_writer<Val>& writer) {
                 types::vector1d_t<Val> nv(ny);
                 std::array<Val, A::size> cb, s0;
                 std::array<types::vector1d_t<Val>, A::size> ss, va, vb, fv, lv;
@@ -67,8 +68,8 @@ namespace acstc {
                         const auto aa = pg * (gq + im * s4);
                         const auto bb = ga * gq + si * s4;
                         const auto cc = ng * (gq - im * s4);
-                        const auto sa = __psqrt(aa);
-                        const auto sc = __psqrt(cc);
+                        const auto sa = _psqrt(aa);
+                        const auto sc = _psqrt(cc);
                         const auto la = sa / sc;
                         const auto mu = bb / sa / sc;
                         const auto pq = on + im * qq;
@@ -97,7 +98,7 @@ namespace acstc {
                         for (size_t i = 0; i < b0.size(); ++i) {
                             nv[0] = s0[i] * cv[1];
                             nv.back() = s0[i] * cv[ny - 2];
-                            for (size_t m = 1; m < n; ++m) {
+                            for (size_t m = _start_index(n, past_n); m < n; ++m) {
                                 nv[0] += fv[i][m] * ss[i][n - m];
                                 nv.back() += lv[i][m] * ss[i][n - m];
                             }
@@ -125,7 +126,13 @@ namespace acstc {
         static constexpr auto on = Arg(1);
         static constexpr auto tw = Arg(2);
 
-        static auto __psqrt(const Val& value) {
+        static auto _start_index(const size_t n, const size_t m) {
+            if (n < m)
+                return size_t(1);
+            return m ? n - m : size_t(1);
+        }
+
+        static auto _psqrt(const Val& value) {
             const auto res = std::sqrt(value);
             return res.real() < 0 ? -res : res;
         }
