@@ -101,35 +101,38 @@ namespace acstc {
 
             static constexpr auto size = N;
 
-            pade_series_coefficients() = default;
+            pade_series_coefficients() : _coefficients(__impl::get_coefficients<T, N>()) {}
+
+            explicit pade_series_coefficients(std::array<__impl::coefficients<T>, N> coefficients) :
+                _coefficients(std::move(coefficients)) {}
 
             auto begin() {
-                return coefficients.begin();
+                return _coefficients.begin();
             }
 
             auto begin() const {
-                return coefficients.begin();
+                return _coefficients.begin();
             }
 
             auto end() {
-                return coefficients.end();
+                return _coefficients.end();
             }
 
             auto end() const {
-                return coefficients.end();
+                return _coefficients.end();
             }
 
             auto operator[](const size_t i) {
-                return coefficients[i];
+                return _coefficients[i];
             }
 
             auto operator[](const size_t i) const {
-                return coefficients[i];
+                return _coefficients[i];
             }
 
         private:
 
-            const std::array<__impl::coefficients<T>, N> coefficients = __impl::get_coefficients<T, N>();
+            const std::array<__impl::coefficients<T>, N> _coefficients;
 
         };
 

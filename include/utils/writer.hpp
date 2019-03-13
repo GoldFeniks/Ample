@@ -92,6 +92,8 @@ namespace acstc {
 
         public:
 
+            using value_type = T;
+
             template<typename... Args>
             explicit writer(const size_t step, Args&&... args) : _step(step), Base(std::forward<Args>(args)...) {}
 
