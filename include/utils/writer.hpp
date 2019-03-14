@@ -27,25 +27,52 @@ namespace acstc {
             };
 
             template<typename T>
-            class text_writer_base : public writer_base<T> {
+            class stream_writer_base : public writer_base<T> {
 
             public:
 
-                text_writer_base(const std::string& filename, std::string separator = " ") :
-                    _stream(filename), _separator(std::move(separator)) {}
+                explicit stream_writer_base(const std::string& filename, std::string separator = " ", std::string ending = "\n",
+                        std::ios_base::openmode mode = std::ios_base::out) :
+                    _stream(filename, mode), _separator(std::move(separator)), _ending(std::move(ending)) {}
 
                 void after_write() override {
-                    _stream << '\n';
+                    _stream << _ending;
                 }
 
                 void write_one(const T& value) override {
                     _stream << value << _separator;
                 }
 
+                auto stream() {
+                    return _stream;
+                }
+
             private:
 
                 std::ofstream _stream;
                 const std::string _separator;
+                const std::string _ending;
+
+            };
+
+            template<typename T>
+            class binary_writer_base : public writer_base<T> {
+
+            public:
+
+                explicit binary_writer_base(const std::string& filename) : _stream(filename, std::ios_base::binary) {}
+
+                void write_one(const T& value) override {
+                    _stream.write(reinterpret_cast<const char*>(&value), sizeof(T));
+                }
+
+                auto stream() {
+                    return _stream;
+                }
+
+            private:
+
+                std::ofstream _stream;
 
             };
 
@@ -55,7 +82,7 @@ namespace acstc {
             public:
 
                 template<typename F, typename... Args>
-                converter_writer_base(const F& convert, Args&&... args) :
+                explicit converter_writer_base(const F& convert, Args&&... args) :
                     _convert([convert](const T& value) { return convert(value); }), _base(std::forward<Args>(args)...) {}
 
                 void before_write() {
@@ -122,12 +149,23 @@ namespace acstc {
         };
 
         template<typename T>
-        class text_writer : public writer<T, writer_bases::text_writer_base<T>> {
+        class stream_writer : public writer<T, writer_bases::stream_writer_base<T>> {
 
         public:
 
-            explicit text_writer(const std::string& filename, const std::string& separator = " ") :
-                writer<T, writer_bases::text_writer_base<T>>(filename, separator) {}
+            explicit stream_writer(const std::string& filename, const std::string& separator = " ",
+                    const std::string& ending = "\n") :
+                writer<T, writer_bases::stream_writer_base<T>>(filename, separator, ending) {}
+
+        };
+
+        template<typename T>
+        class binary_writer : public writer<T, writer_bases::binary_writer_base<T>> {
+
+        public:
+
+            explicit binary_writer(const std::string& filename) :
+                writer<T, writer_bases::binary_writer_base<T>>(filename) {}
 
         };
 
