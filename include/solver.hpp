@@ -30,8 +30,7 @@ namespace acstc {
             const auto sq_hy = std::pow(hy, 2);
             const auto [g0, g1, b0, b1, ca, na] = _calc_coefficients(coefficients, k0, sq_k0, hx, hy, sq_hy);
             return [nx, ny, k0, sq_k0, hx, hy, sq_hy, b0, b1, g0, g1, ca, na, coefficients]
-                (const types::vector2d_t<Val>& init, const types::vector1d_t<Arg>& k,
-                        auto&& callback, const size_t past_n = 0) {
+                (const auto& init, const auto& k, auto&& callback, const size_t past_n = 0) {
                 types::vector1d_t<Val> nv(ny);
                 std::array<Val, A::size> cb, s0;
                 std::array<types::vector1d_t<Val>, A::size> ss, va, vb, fv, lv;
