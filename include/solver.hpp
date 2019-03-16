@@ -7,6 +7,7 @@
 #include <utility>
 #include <cstring>
 #include "utils/types.hpp"
+#include "utils/utils.hpp"
 #include "utils/writer.hpp"
 
 namespace acstc {
@@ -45,9 +46,9 @@ namespace acstc {
 
                 auto thomas_solver = _get_thomas_solver(ny);
 
-                for (size_t j = 0; j < init.size(); ++j) {
-                    const auto nb = k[j] / k0;
-                    const auto dd = (std::pow(k[j], 2) - sq_k0 - tw / sq_hy) / sq_k0;
+                for (auto [cv, kj] : utils::zip(init, k)) {
+                    const auto nb = std::pow(kj / k0, 2);
+                    const auto dd = (std::pow(kj, 2) - sq_k0 - tw / sq_hy) / sq_k0;
                     for (size_t i = 0; i < b0.size(); ++i) {
                         const auto& [a, b, c] = coefficients[i];
 
@@ -90,7 +91,6 @@ namespace acstc {
                         s0[i] = -nq;
                     }
 
-                    auto cv = init[j];
                     callback(cv);
 
                     for (size_t n = 1; n < nx; ++n) {
