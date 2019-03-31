@@ -14,81 +14,64 @@ namespace acstc {
 
     public:
 
+        initial_conditions() = delete;
+        initial_conditions(const initial_conditions&) = delete;
+        initial_conditions(initial_conditions&&) = delete;
+        ~initial_conditions() = delete;
+
         template<typename F, typename... Args>
-        explicit initial_conditions(const Arg& a, const Arg& b, const size_t& n, const F& func, const Args&... args) {
+        static auto create(const Arg& a, const Arg& b, const size_t& n, const F& func, const Args&... args) {
             const auto h = (b - a) / (n - 1);
             types::vector1d_t<Arg> xs(n);
             for (size_t i = 0; i < n; ++i)
                 xs[i] = a + i * h;
-            _init(func, xs, std::forward<const Args>(args)...);
+            return create(xs, func, std::forward<const Args>(args)...);
         }
 
         template<typename V, typename F, typename... Args>
-        explicit initial_conditions(const V& xs, const F& func, const Args&... args) {
-            _init(func, xs, std::forward<const Args>(args)...);
-        }
-
-        auto size() const {
-            return _data.size();
-        }
-
-        auto operator[](const size_t& index) const {
-            return _data[index];
-        }
-
-        auto begin() const {
-            return _data.begin();
-        }
-
-        auto end() const {
-            return _data.end();
-        }
-
-    private:
-
-        types::vector2d_t<Val> _data;
-
-        template<typename F, typename... Args>
-        void _init(const F& func, const types::vector1d_t<Arg>& xs, const Args&... args) {
+        static auto create(const V& xs, const F& func, const Args&... args) {
             const auto zip = utils::zip(std::forward<const Args>(args)...);
-            _data.resize(zip.size());
-            for (size_t i = 0; i < size(); ++i) {
-                _data[i].resize(xs.size());
+            types::vector2d_t<Val> result(zip.size());
+            for (size_t i = 0; i < result.size(); ++i) {
+                result[i].reserve(xs.size());
                 auto tuple = std::tuple_cat(std::make_tuple(xs[0]), zip[i]);
                 for (size_t j = 0; j < xs.size(); ++j) {
                     std::get<0>(tuple) = xs[j];
-                    _data[i][j] = std::apply(func, tuple);
+                    result[i].emplace_back(std::apply(func, tuple));
                 }
             }
+            return result;
         }
 
     };
 
-    template<typename Arg, typename Val = Arg, typename KV>
-    auto generalized_gaussian_source(const Arg& a, const Arg& b, const size_t& n, const Arg& a0,
-            const Arg& t1, const Arg& t2, const KV& k) {
-        return initial_conditions<Arg, Val>(a, b, n,
-            [a0, t1, t2](Arg a, const auto& k) {
-                const auto ta = std::tan(t1);
-                a -= a0;
-                return std::sqrt(k) * ta *
-                    std::exp(-std::pow(k, 2) * std::pow(a, 2) * std::pow(ta, 2) / Arg(2)) *
-                    std::exp(Val(0, 1) * k * a * std::sin(t2));
-            }, k);
+    template<typename Val, typename Arg, typename AV, typename WV>
+    auto generalized_gaussian_source(const Arg& a, const Arg& b, const size_t& n, const Arg& x0,
+            const Arg& t1, const Arg& t2, const AV& ca, const WV& cw) {
+        return initial_conditions<Arg, Val>::create(a, b, n,
+                [x0, t1, t2, im=Val(0, 1)](Arg x, const auto& a, const auto& w) {
+                    const auto ta = std::tan(t1);
+                    x -= x0;
+                    return a * ta * std::exp(-std::pow(x, 2) * std::pow(ta, 2) / w) *
+                        std::exp(im * x * std::sin(t2) / std::sqrt(w));
+                }, ca, cw);
     }
 
-    template<typename Arg, typename Val = Arg, typename KV>
-    auto gaussian_source(const Arg& a, const Arg& b, const size_t& n, const Arg& a0, const KV& k) {
-        return generalized_gaussian_source<Arg, Val, KV>(a, b, n, a0, Arg(M_PI / 4), Arg(0), k);
+    template<typename Val, typename Arg, typename AV, typename WV>
+    auto gaussian_source(const Arg& a, const Arg& b, const size_t& n, const Arg& x0, const AV& ca, const WV& cw) {
+        return initial_conditions<Arg, Val>::create(a, b, n,
+                [x0](const Arg& x, const auto& a, const auto& w) {
+                    return a * std::exp(-std::pow(x - x0, 2) / w);
+                }, ca, cw);
     }
 
-    template<typename Arg, typename Val = Arg, typename KV>
-    auto greene_source(const Arg& a, const Arg& b, const size_t& n, const Arg& a0, const KV& k) {
-        return initial_conditions<Arg, Val>(a, b, n,
-            [a0](const Arg& a, const auto& k) {
-                const auto& s = std::pow(a - a0, 2) * std::pow(k, 2);
-                return std::sqrt(k) * (Arg(1.4467) - Arg(0.4201) * s) * std::exp(-s / Arg(3.0512));
-            }, k);
+    template<typename Val, typename Arg, typename AV, typename WV>
+    auto greene_source(const Arg& a, const Arg& b, const size_t& n, const Arg& x0, const AV& ca, const WV& cw) {
+        return initial_conditions<Arg, Val>::create(a, b, n,
+                [x0](const Arg& x, const auto& a, const auto& w) {
+                    const auto s = std::pow(x - x0, 2) / w;
+                    return a * (Arg(1.4467) - Arg(0.8402) * s) * std::exp(-s / 1.5256);
+                }, ca, cw);
     }
 
 }// namespace acstc
