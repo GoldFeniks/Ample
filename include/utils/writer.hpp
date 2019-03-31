@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <fstream>
 #include <utility>
+#include <type_traits>
 #include <functional>
 #include "types.hpp"
 
@@ -126,10 +127,6 @@ namespace acstc {
 
             void write(const T* data, const size_t count) {
                 write(data, data + count);
-            };
-
-            void write(const types::vector1d_t<T>& data) {
-                write(data.cbegin(), data.cend());
             }
 
             void write(const T& value) {
@@ -138,12 +135,18 @@ namespace acstc {
                 this->after_write();
             }
 
-            void operator()(const types::vector1d_t<T>& data) {
-                write(data);
+            template<typename V, typename = std::enable_if_t<!std::is_same_v<T, V>>>
+            void write(const V& data) {
+                write(data.begin(), data.end());
             }
 
             void operator()(const T& value) {
                 write(value);
+            }
+
+            template<typename V, typename = std::enable_if_t<!std::is_same_v<T, V>>>
+            void operator()(const V& data) {
+                write(data);
             }
 
         };
