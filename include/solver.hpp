@@ -20,75 +20,80 @@ namespace acstc {
 
     public:
 
-        solver(const Val& k0, const Arg& a,  const Arg& b,  const Arg& c,
+        solver(const Arg& a,  const Arg& b,  const Arg& c,
                const Arg& x0, const Arg& x1, const Arg& nx,
-               const Arg& y0, const Arg& y1, const Arg& ny) :
-               _k0(k0), _a(a), _b(b), _c(c), _hx((x1 - x0) / (nx - 1)), _hy((y1 - y0) / (ny - 1)),
-               _sq_k0(std::pow(k0, 2)), _sq_hy(std::pow(_hy, 2)), _nx(nx), _ny(ny) {
-            const auto den = _sq_k0 * _sq_hy;
-            const auto a0 = (_a - on) * im * _k0 * _hx;
-            const auto a1 = (_b - _c) * im * _k0 * _hx;
-            _g0 = tw + a0;
-            _b0 = tw - a0;
-            _g1 = tw * _c + a1;
-            _b1 = tw * _c - a1;
-            _ca = _g1 / den;
-            _na = _b1 / den;
-        }
+               const Arg& y0, const Arg& y1, const Arg& ny)
+               : _a(a), _b(b), _c(c), _hx((x1 - x0) / (nx - 1)),
+                 _hy((y1 - y0) / (ny - 1)), _sq_hy(std::pow(_hy, 2)), _nx(nx), _ny(ny) {}
 
-        template<typename IN, typename KJ, typename PJ, typename CL>
-        void operator()(const IN& init, const KJ& k, const PJ& phi, CL&& callback, const size_t past_n = 0) const {
-            const auto mc = k.size();
-            if (init.size() != mc || phi.size() != mc)
-                throw std::logic_error("Vectors init, k, phi must be the same size");
-            types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0)), va(_ny, _na);
+        template<typename IN, typename K0, typename KJ, typename PJ, typename CL>
+        void operator()(const IN& init, const K0& k0, const KJ& k, const PJ& phi, CL&& callback, const size_t past_n = 0) const {
+            const auto mc = k0.size();
+            if (init.size() != mc || k.size() != mc || phi.size() != mc)
+                throw std::logic_error("Vectors init, k0, k, phi must be the same size");
+
+            types::vector1d_t<Val> ca(mc), s0(mc), nv(_ny), ov(_ny, Val(0));
             types::vector2d_t<Val> cv(mc, types::vector1d_t<Val>(_ny)),
                                    cb(mc, types::vector1d_t<Val>(_ny)),
+                                   va(mc, types::vector1d_t<Val>(_ny)),
                                    vb(mc, types::vector1d_t<Val>(_ny)),
                                    fs(mc, types::vector1d_t<Val>(_nx)),
                                    ls(mc, types::vector1d_t<Val>(_nx)),
                                    fv(mc, types::vector1d_t<Val>(_nx)),
                                    lv(mc, types::vector1d_t<Val>(_nx));
-            const auto s0 = im * tw * _c / _k0 / (_b - _c) / _hx - on;
-            va[0] = va.back() = s0 + tw;
 
             for (size_t j = 0; j < mc; ++j) {
+                const auto sq_k0 = std::pow(k0[j], 2);
+                const auto den = sq_k0 * _sq_hy;
+                const auto a0 = (_a - on) * im * k0[j] * _hx;
+                const auto a1 = (_b - _c) * im * k0[j] * _hx;
+                const auto g0 = tw + a0;
+                const auto b0 = tw - a0;
+                const auto g1 = tw * _c + a1;
+                const auto b1 = tw * _c - a1;
+                ca[j] = g1 / den;
+                va[j].assign(_ny, b1 / den);
+                s0[j] = im * tw * _c / k0[j] / (_b - _c) / _hx - on;
+                va[j][0] = va[j].back() = s0[j] + tw;
                 for (size_t i = 0; i < _ny; ++i) {
-                    const auto dd = (std::pow(k[j][i], 2) - _sq_k0 - tw / _sq_hy) / _sq_k0;
-                    cb[j][i] = _g0 + _g1 * dd;
-                    vb[j][i] = _b0 + _b1 * dd;
+                    const auto dd = (std::pow(k[j][i], 2) - sq_k0 - tw / _sq_hy) / sq_k0;
+                    cb[j][i] = g0 + g1 * dd;
+                    vb[j][i] = b0 + b1 * dd;
                     cv[j][i] = init[j][i];
                     ov[i] += phi[j][i] * init[j][i];
                 }
-                _fill_parameters(k[j][0], fs[j], vb[j][0]);
-                _fill_parameters(k[j].back(), ls[j], vb[j].back());
+                _fill_parameters(k0[j], k[j][0], fs[j], vb[j][0]);
+                _fill_parameters(k0[j], k[j].back(), ls[j], vb[j].back());
             }
 
             callback(ov);
 
+            auto x = _hx;
+
             for (size_t i = 1; i < _nx; ++i) {
                 ov.assign(_ny, Val(0));
                 for (size_t j = 0; j < mc; ++j) {
-                    nv[0] = s0 * cv[j][1];
-                    nv.back() = s0 * cv[j][_ny - 2];
+                    nv[0] = s0[j] * cv[j][1];
+                    nv.back() = s0[j] * cv[j][_ny - 2];
                     for (size_t m = _start_index(i, past_n); m < i; ++m) {
                         nv[0] += fv[j][m] * fs[j][i - m];
                         nv.back() += lv[j][m] * ls[j][i - m];
                     }
 
                     for (size_t m = 1; m < _ny - 1; ++m)
-                        nv[m] = (cv[j][m - 1] + cv[j][m + 1]) * _ca + cv[j][m] * cb[j][m];
+                        nv[m] = (cv[j][m - 1] + cv[j][m + 1]) * ca[j] + cv[j][m] * cb[j][m];
 
-                    _thomas_solver(va, vb[j], nv);
+                    _thomas_solver(va[j], vb[j], nv);
                     std::swap(cv[j], nv);
 
                     fv[j][i] = cv[j][0];
                     lv[j][i] = cv[j].back();
 
                     for (size_t m = 0; m < _ny; ++m)
-                        ov[m] += phi[j][m] * cv[j][m];
+                        ov[m] += phi[j][m] * cv[j][m] * std::exp(im * k0[j] * x);
                 }
                 callback(ov);
+                x += _hx;
             }
         }
 
@@ -98,10 +103,8 @@ namespace acstc {
         static constexpr auto on = Arg(1);
         static constexpr auto tw = Arg(2);
 
-        const Val _k0, _sq_k0;
         const Arg _a, _b, _c, _hx, _hy, _sq_hy;
         const size_t _nx, _ny;
-        Val _g0, _g1, _b0, _b1, _ca, _na;
 
         static auto _start_index(const size_t n, const size_t m) {
             if (n < m)
@@ -114,12 +117,12 @@ namespace acstc {
             return res.real() < 0 ? -res : res;
         }
 
-        void _fill_parameters(const Val& k, types::vector1d_t<Val>& ss, Val& vb) const {
-            const auto nb = std::pow(k / _k0, 2);
+        void _fill_parameters(const Val& k0, const Val& k, types::vector1d_t<Val>& ss, Val& vb) const {
+            const auto nb = std::pow(k / k0, 2);
             const auto de = on - _c * (on - nb);
-            const auto rr = tw * _k0 * _sq_hy / (_b - _c) / _hx;
-            const auto qq = tw * _c / _k0 / (_b - _c) / _hx;
-            const auto ka = _hx * _k0 * (_a - on - (_b - _c) * (on - nb)) / tw;
+            const auto rr = tw * k0 * _sq_hy / (_b - _c) / _hx;
+            const auto qq = tw * _c / k0 / (_b - _c) / _hx;
+            const auto ka = _hx * k0 * (_a - on - (_b - _c) * (on - nb)) / tw;
             const auto ga = rr * de;
             const auto si = ka * -rr;
             const auto pg = ga + im * si;
