@@ -2,10 +2,13 @@
 #include <cmath>
 #include <array>
 #include <tuple>
+#include <mutex>
+#include <thread>
 #include <cstddef>
 #include <complex>
 #include <utility>
 #include <cstring>
+#include <condition_variable>
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/writer.hpp"
@@ -13,6 +16,7 @@
 
 namespace acstc {
 
+    using namespace std::chrono_literals;
     using namespace std::complex_literals;
 
     template<typename Arg = types::real_t, typename Val = types::complex_t>
@@ -27,12 +31,14 @@ namespace acstc {
                  _hy((y1 - y0) / (ny - 1)), _sq_hy(std::pow(_hy, 2)), _nx(nx), _ny(ny) {}
 
         template<typename IN, typename K0, typename KJ, typename PJ, typename CL>
-        void operator()(const IN& init, const K0& k0, const KJ& k, const PJ& phi, CL&& callback, const size_t past_n = 0) const {
+        void operator()(const IN& init, const K0& k0, const KJ& k, const PJ& phi, CL&& callback,
+                const size_t past_n = 0, size_t num_workers = 1, const size_t buff_size = 100) const {
             const auto mc = k0.size();
             if (init.size() != mc || k.size() != mc || phi.size() != mc)
                 throw std::logic_error("Vectors init, k0, k, phi must be the same size");
 
-            types::vector1d_t<Val> ca(mc), s0(mc), nv(_ny), ov(_ny, Val(0));
+
+            types::vector1d_t<Val> ca(mc), s0(mc), bv(_ny, Val(0));
             types::vector2d_t<Val> cv(mc, types::vector1d_t<Val>(_ny)),
                                    cb(mc, types::vector1d_t<Val>(_ny)),
                                    va(mc, types::vector1d_t<Val>(_ny)),
@@ -60,41 +66,95 @@ namespace acstc {
                     cb[j][i] = g0 + g1 * dd;
                     vb[j][i] = b0 + b1 * dd;
                     cv[j][i] = init[j][i];
-                    ov[i] += phi[j][i] * init[j][i];
+                    bv[i] += phi[j][i] * init[j][i];
                 }
                 _fill_parameters(k0[j], k[j][0], fs[j], vb[j][0]);
                 _fill_parameters(k0[j], k[j].back(), ls[j], vb[j].back());
             }
 
-            callback(ov);
+            callback(bv);
 
-            auto x = _hx;
+            auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
+                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
 
-            for (size_t i = 1; i < _nx; ++i) {
-                ov.assign(_ny, Val(0));
-                for (size_t j = 0; j < mc; ++j) {
-                    nv[0] = s0[j] * cv[j][1];
-                    nv.back() = s0[j] * cv[j][_ny - 2];
-                    for (size_t m = _start_index(i, past_n); m < i; ++m) {
-                        nv[0] += fv[j][m] * fs[j][i - m];
-                        nv.back() += lv[j][m] * ls[j][i - m];
+                auto x = _hx;
+                auto solver = _get_thomas_solver();
+
+                for (size_t i = 1; i < _nx; ++i) {
+                    ov.assign(_ny, Val(0));
+                    for (size_t j = j0; j < j1; ++j) {
+                        nv[0] = s0[j] * cv[j][1];
+                        nv.back() = s0[j] * cv[j][_ny - 2];
+                        for (size_t m = _start_index(i, past_n); m < i; ++m) {
+                            nv[0] += fv[j][m] * fs[j][i - m];
+                            nv.back() += lv[j][m] * ls[j][i - m];
+                        }
+
+                        for (size_t m = 1; m < _ny - 1; ++m)
+                            nv[m] = (cv[j][m - 1] + cv[j][m + 1]) * ca[j] + cv[j][m] * cb[j][m];
+
+                        solver(va[j], vb[j], nv);
+                        std::swap(cv[j], nv);
+
+                        fv[j][i] = cv[j][0];
+                        lv[j][i] = cv[j].back();
+
+                        for (size_t m = 0; m < _ny; ++m)
+                            ov[m] += phi[j][m] * cv[j][m] * std::exp(im * k0[j] * x);
                     }
 
-                    for (size_t m = 1; m < _ny - 1; ++m)
-                        nv[m] = (cv[j][m - 1] + cv[j][m + 1]) * ca[j] + cv[j][m] * cb[j][m];
-
-                    _thomas_solver(va[j], vb[j], nv);
-                    std::swap(cv[j], nv);
-
-                    fv[j][i] = cv[j][0];
-                    lv[j][i] = cv[j].back();
-
-                    for (size_t m = 0; m < _ny; ++m)
-                        ov[m] += phi[j][m] * cv[j][m] * std::exp(im * k0[j] * x);
+                    call(ov);
+                    x += _hx;
                 }
-                callback(ov);
-                x += _hx;
+            };
+
+            num_workers = std::min(mc, num_workers);
+
+            if (num_workers <= 1) {
+                solve_func(0, mc, callback);
+                return;
             }
+
+            types::vector1d_t<std::thread> workers;
+            workers.reserve(num_workers);
+            types::vector2d_t<Val> ov_buff(buff_size, types::vector1d_t<Val>(_ny, Val(0)));
+            types::vector2d_t<bool> done_buff(buff_size, types::vector1d_t<bool>(num_workers, false));
+            types::vector1d_t<std::mutex> buff_mutex(buff_size);
+            const auto mpw = mc / num_workers;
+
+            for (size_t i = 0; i < num_workers; ++i)
+                workers.emplace_back([&, i](){
+                    solve_func(mpw * i, i == num_workers - 1 ? mc : mpw * (i + 1), [&, i, in=size_t(0)](const auto& data) mutable {
+                        while (true) {
+                            buff_mutex[in].lock();
+                            if (!done_buff[in][i])
+                                break;
+                            std::cout << "Buffer size exceeded" << std::endl;
+                            buff_mutex[in].unlock();
+                        }
+                        for (size_t m = 0; m < _ny; ++m)
+                            ov_buff[in][m] += data[m];
+                        done_buff[in][i] = true;
+                        buff_mutex[in].unlock();
+                        in = (in + 1) % buff_size;
+                    });
+                });
+
+            size_t in = 1, bi = 0;
+            while (in < _nx) {
+                buff_mutex[bi].lock();
+                if (std::all_of(done_buff[bi].begin(), done_buff[bi].end(), [](const auto& val) { return val; })) {
+                    callback(ov_buff[bi]);
+                    done_buff[bi].assign(num_workers, false);
+                    ov_buff[bi].assign(_ny, Val(0));
+                    bi = (bi + 1) % buff_size;
+                    ++in;
+                }
+                buff_mutex[bi].unlock();
+            }
+
+            for (auto& it : workers)
+                it.join();
         }
 
     private:
@@ -153,19 +213,20 @@ namespace acstc {
             vb = -ss[0];
         }
 
-        auto _thomas_solver(const types::vector1d_t<Val>& a,
-                const types::vector1d_t<Val>& b, types::vector1d_t<Val>& d) const {
-            static types::vector1d_t<Val> c(_ny);
-            c[0] = a[0] / b[0];
-            d[0] /= b[0];
-            for (size_t i = 1; i < _ny - 1; ++i) {
-                const auto w = b[i] - a[i] * c[i - 1];
-                c[i] = a[i] / w;
-                d[i] = (d[i] - a[i] * d[i - 1]) / w;
-            }
-            d.back() = (d.back() - a.back() * d[_ny - 2]) / (b.back() - a.back() * c[_ny - 2]);
-            for (size_t i = _ny - 1; i > 0; --i)
-                d[i - 1] -= c[i - 1] * d[i];
+        auto _get_thomas_solver() const {
+            return [this, c=types::vector1d_t<Val>(_ny)](const types::vector1d_t<Val>& a,
+                    const types::vector1d_t<Val>& b, types::vector1d_t<Val>& d) mutable {
+                c[0] = a[0] / b[0];
+                d[0] /= b[0];
+                for (size_t i = 1; i < _ny - 1; ++i) {
+                    const auto w = b[i] - a[i] * c[i - 1];
+                    c[i] = a[i] / w;
+                    d[i] = (d[i] - a[i] * d[i - 1]) / w;
+                }
+                d.back() = (d.back() - a.back() * d[_ny - 2]) / (b.back() - a.back() * c[_ny - 2]);
+                for (size_t i = _ny - 1; i > 0; --i)
+                    d[i - 1] -= c[i - 1] * d[i];
+            };
         }
 
     };
