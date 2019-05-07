@@ -11,12 +11,11 @@
 #include <condition_variable>
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
-#include "utils/writer.hpp"
+#include "io/writer.hpp"
 #include "utils/callback.hpp"
 
 namespace acstc {
-
-    using namespace std::chrono_literals;
+    
     using namespace std::complex_literals;
 
     template<typename Arg = types::real_t, typename Val = types::complex_t>

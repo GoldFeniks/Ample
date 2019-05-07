@@ -1,0 +1,3 @@
+[submodule "modules/Acoustics-at-home"]
+	path = modules/Acoustics-at-home
+	url = git@github.com:Nauchnik/Acoustics-at-home.git
