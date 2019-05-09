@@ -62,7 +62,7 @@ namespace acstc {
 
             template<typename T, typename C, typename V>
             static auto line(const T& a, const T& b, const size_t n, const C& coords, const V& values) {
-                types::vector1d_t<T> res(n);
+                types::vector1d_t<std::decay_t<decltype(values[0])>> res(n);
                 line(a, b, coords, values, res);
                 return res;
             }

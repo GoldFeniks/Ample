@@ -49,7 +49,8 @@ namespace acstc {
 
         template<typename CI, typename XV, typename YV, typename DV>
         static auto _create(const config<T, CI>& config, const XV& x, const YV& y, const DV& data) {
-            types::vector3d_t<V> k_j, phi_j;
+            types::vector3d_t<V> k_j;
+            types::vector3d_t<T> phi_j;
             const auto nx = x.size();
             const auto ny = y.size();
             for (size_t i = 0; i < nx; ++i) {
@@ -64,7 +65,8 @@ namespace acstc {
 
         template<typename CI, typename YV, typename DV>
         static auto _create(const config<T, CI>& config, const YV& y, const DV& data) {
-            types::vector2d_t<V> k_j, phi_j;
+            types::vector2d_t<V> k_j;
+            types::vector2d_t<T> phi_j;
             const auto ny = y.size();
             size_t m = 0;
             for (size_t i = 0; i < ny; ++i)
