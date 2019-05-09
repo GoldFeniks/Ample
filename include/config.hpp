@@ -3,6 +3,7 @@
 #include <string>
 #include <cstddef>
 #include <fstream>
+#include "series.hpp"
 #include "bathymetry.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
@@ -13,13 +14,16 @@ using json = nlohmann::json;
 namespace acstc {
 
 #define CONFIG_DATA_FIELD(field, type) const type field () const { return _data[#field].template get<type>(); }
+#define CONFIG_FIELD(field) const auto& field () const { return _##field; }
 
     template<typename T = types::real_t, typename I = utils::linear_interpolation>
     class config {
 
     public:
 
-        config() : _data(_default_data()), _bathymetry(_create_bathymetry(_data["bathymetry"])) {}
+        config() : _data(_default_data()), _bathymetry(_create_bathymetry(_data["bathymetry"])) {
+            _fill_coefficients(_data["coefficients"]);
+        }
 
         explicit config(const std::string& filename) : config() {
             std::ifstream in(filename);
@@ -41,19 +45,20 @@ namespace acstc {
         CONFIG_DATA_FIELD(f, T)
         CONFIG_DATA_FIELD(zr, T)
 
-        const auto& data() const {
-            return _data;
-        }
+        CONFIG_FIELD(data)
+        CONFIG_FIELD(a)
+        CONFIG_FIELD(b)
+        CONFIG_FIELD(c)
 
-        const auto x_bounds() const {
+        auto x_bounds() const {
             return std::make_tuple(x0(), x1());
         }
 
-        const auto y_bounds() const {
+        auto y_bounds() const {
             return std::make_tuple(y0(), y1());
         }
 
-        const auto bounds() const {
+        auto bounds() const {
             return std::tuple_cat(x_bounds(), y_bounds());
         }
 
@@ -61,10 +66,15 @@ namespace acstc {
             return _bathymetry[0];
         }
 
+        auto coefficients() const {
+            return std::make_tuple(a(), b(), c());
+        }
+
     private:
 
         json _data;
         utils::interpolated_data_2d<T, T, I> _bathymetry;
+        T _a, _b, _c;
 
         static json _default_data() {
             return {
@@ -77,7 +87,7 @@ namespace acstc {
                   { "values",
                     {
                       { "x", { T(0), T(25000) } },
-                      { "y", { T(-3500), T(3500) } },
+                      { "y", { T(-1000), T(1000) } },
                       { "depths",
                         {
                           { T(25), T(375) },
@@ -90,9 +100,10 @@ namespace acstc {
                 { "x0", T(0) },
                 { "x1", T(25000) },
                 { "nx", size_t(2001) },
-                { "y0", -T(3500) },
-                { "y1",  T(3500) },
-                { "ny", size_t(2001) }
+                { "y0", -T(1000) },
+                { "y1",  T(1000) },
+                { "ny", size_t(2001) },
+                { "coefficients", { "pade" } },
             };
         }
 
@@ -113,6 +124,24 @@ namespace acstc {
                 return ::acstc::bathymetry<T, I>::from_binary(in);
             }
             throw std::logic_error("Unknown bathymetry type: " + type);
+        }
+
+        auto _fill_coefficients(const json& data) {
+            const auto type = data[0].template get<std::string>();
+            if (type == "pade") {
+                const auto [a, b, c] = series::pade_series_coefficients<1, T>()[0];
+                _a = a;
+                _b = b;
+                _c = c;
+                return;
+            }
+            if (type == "abc") {
+                _a = data["/1/a"_json_pointer].template get<T>();
+                _b = data["/1/b"_json_pointer].template get<T>();
+                _c = data["/1/c"_json_pointer].template get<T>();
+                return;
+            }
+            throw std::logic_error("Unknown coefficients type: " + type);
         }
 
     };
