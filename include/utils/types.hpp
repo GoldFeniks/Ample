@@ -15,6 +15,9 @@ namespace acstc {
         template<typename T>
         using vector2d_t = std::vector<std::vector<T>>;
 
+        template<typename T>
+        using vector3d_t = std::vector<std::vector<std::vector<T>>>;
+
         using cvector1d_t = vector1d_t<complex_t>;
         using cvector2d_t = vector2d_t<complex_t>;
 

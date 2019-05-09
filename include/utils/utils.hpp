@@ -1,8 +1,9 @@
 #pragma once
-
 #include <tuple>
 #include <cstddef>
 #include <iterator>
+#include <algorithm>
+#include "types.hpp"
 
 namespace acstc {
 
@@ -103,6 +104,27 @@ namespace acstc {
             };
 
         };
+
+        template<typename V, typename T>
+        auto find_indices(const V& values, const T& value) {
+            auto it = std::lower_bound(values.begin(), values.end(), value);
+            if (it == values.end())
+                return std::tuple<size_t, size_t>(0, 1);
+            if (it == values.begin())
+                ++it;
+            const auto d = std::distance(values.begin(), it);
+            return std::tuple<size_t, size_t>(d - 1, d);
+        }
+
+        template<typename T>
+        auto mesh_1d(const T& a, const T& b, const size_t& n) {
+            const auto h = (b - a) / (n - 1);
+            types::vector1d_t<T> result;
+            result.reserve(n);
+            for (size_t i = 0; i < n; ++i)
+                result.emplace_back(a + i * h);
+            return result;
+        }
 
     }// namespace utils
 
