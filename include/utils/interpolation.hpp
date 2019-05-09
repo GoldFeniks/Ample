@@ -49,7 +49,7 @@ namespace acstc {
             }
 
             template<typename T, typename C, typename V, typename RV>
-            static auto line(const T& a, const T& b, const C& coords, const V& values, const RV& res) {
+            static auto line(const T& a, const T& b, const C& coords, const V& values, RV& res) {
                 size_t i = 0;
                 const auto h = (b - a) / (res.size() - 1);
                 for (size_t j = 0; j < res.size(); ++j) {
@@ -81,7 +81,7 @@ namespace acstc {
             template<typename T, typename C1, typename C2, typename V>
             static auto field_line(const T& x, const T& y0, const T& y1, const size_t ny,
                                    const C1& xs, const C2& ys, const V& values) {
-                types::vector1d_t<std::decay_t<decltype(values[0])>> res(ny);
+                types::vector1d_t<std::decay_t<decltype(values[0][0])>> res(ny);
                 field_line(x, y0, y1, xs, ys, values, res);
                 return res;
             }
@@ -109,6 +109,134 @@ namespace acstc {
                 field(x0, x1, y0, y1, xs, ys, values, res);
                 return res;
             }
+
+        };
+
+        template<typename T, typename V = T, typename I = linear_interpolation>
+        class interpolated_data_1d {
+
+        public:
+
+            interpolated_data_1d() = delete;
+
+            interpolated_data_1d(const interpolated_data_1d& other) {
+                *this = other;
+            }
+
+            interpolated_data_1d(interpolated_data_1d&& other) {
+                *this = std::move(other);
+            }
+
+            interpolated_data_1d& operator=(const interpolated_data_1d& other) {
+                _interpolators = other._interpolators;
+                _x = other._x;
+                for (auto& it : _interpolators)
+                    it._owner = this;
+                return *this;
+            }
+
+            interpolated_data_1d& operator=(interpolated_data_1d&& other) {
+                _interpolators = std::move(other._interpolators);
+                _x = std::move(other._x);
+                for (auto& it : _interpolators)
+                    it._owner = this;
+                return *this;
+            }
+
+            interpolated_data_1d(const types::vector1d_t<T>& x, const types::vector2d_t<V>& data) : _x(x) {
+                _interpolators.reserve(data.size());
+                for (const auto& it : data)
+                    _interpolators.emplace_back(this, it);
+
+            }
+            interpolated_data_1d(const types::vector1d_t<T>& x, const types::vector1d_t<V>& data) : _x(x) {
+                _interpolators.emplace_back(this, data);
+            }
+
+            interpolated_data_1d(types::vector1d_t<T>&& x, types::vector2d_t<V>&& data) : _x(std::move(x)) {
+                _interpolators.reserve(data.size());
+                for (const auto& it : data)
+                    _interpolators.emplace_back(this, std::move(it));
+            }
+            interpolated_data_1d(types::vector1d_t<T>&& x, types::vector1d_t<V>&& data) : _x(std::move(x)) {
+                _interpolators.emplace_back(this, std::move(data));
+            }
+
+            interpolated_data_1d(const types::vector1d_t<T>& x, types::vector2d_t<V>&& data) : _x(x) {
+                _interpolators.reserve(data.size());
+                for (const auto& it : data)
+                    _interpolators.emplace_back(this, std::move(it));
+            }
+            interpolated_data_1d(const types::vector1d_t<T>& x, types::vector1d_t<V>&& data) : _x(x) {
+                _interpolators.emplace_back(this, std::move(data));
+            }
+
+            const auto& operator[](const size_t i) const {
+                return _interpolators[i];
+            }
+
+            auto size() const {
+                return _interpolators.size();
+            }
+
+            const auto& x() const {
+                return _x;
+            }
+
+        private:
+
+            class interpolator {
+
+            public:
+
+                interpolator() = delete;
+
+                interpolator(interpolated_data_1d* owner, const types::vector1d_t<V>& data) : _owner(owner), _data(data) {}
+
+                interpolator(interpolated_data_1d* owner, types::vector1d_t<V>&& data) : _owner(owner), _data(std::move(data)) {}
+
+                auto point(const T& x) const {
+                    const auto [ix, jx] = utils::find_indices(_owner->_x, x);
+                    return I::template line_point(_data[ix], _data[jx], _owner->_x[ix], _owner->_x[jx], x);
+                }
+
+                template<typename RV>
+                auto line(const T& x0, const T& x1, RV& res) const {
+                    I::template line(x0, x1, _owner->_x, _data, res);
+                }
+
+                template<typename RV>
+                auto line(RV& res) const {
+                    line(_owner->_x.front(), _owner->_x.back(), res);
+                }
+
+                auto line(const T& x0, const T& x1, const size_t n) const {
+                    return I::template line(x0, x1, n, _owner->_x, _data);
+                }
+
+                auto line(const size_t n) const {
+                    return line(_owner->_x.front(), _owner->_x.back(), n);
+                }
+
+                const auto& data() const {
+                    return _data;
+                }
+
+                const auto& x() const {
+                    return _owner->x();
+                }
+
+            private:
+
+                interpolated_data_1d* _owner;
+                const types::vector1d_t<V> _data;
+
+                friend class interpolated_data_1d;
+
+            };
+
+            types::vector1d_t<T> _x;
+            types::vector1d_t<interpolator> _interpolators;
 
         };
 
