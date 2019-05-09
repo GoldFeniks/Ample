@@ -15,10 +15,10 @@ namespace acstc {
             read_data data;
             std::tie(std::ignore, data.cols) = _read_line(stream);
             while (_find_something(stream)) {
-                auto [val, row] = _read_line(stream);
+                const auto [val, row] = _read_line(stream);
                 if (row.size()) {
-                    data.rows.push_back(val);
-                    data.data.push_back(row);
+                    data.rows.push_back(std::move(val));
+                    data.data.push_back(std::move(row));
                 }
             }
             return data;
