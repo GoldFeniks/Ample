@@ -16,7 +16,7 @@ namespace acstc {
 #define CONFIG_DATA_FIELD(field, type) const type field () const { return _data[#field].template get<type>(); }
 #define CONFIG_FIELD(field) const auto& field () const { return _##field; }
 
-    template<typename T = types::real_t, typename I = utils::linear_interpolation>
+    template<typename T = types::real_t>
     class config {
 
     public:
@@ -73,7 +73,7 @@ namespace acstc {
     private:
 
         json _data;
-        utils::interpolated_data_2d<T, T, I> _bathymetry;
+        utils::linear_interpolated_data_2d<T> _bathymetry;
         T _a, _b, _c;
 
         static json _default_data() {
@@ -110,18 +110,18 @@ namespace acstc {
         static auto _create_bathymetry(const json& data) {
             const auto type = data[0].template get<std::string>();
             if (type == "values") {
-                return utils::interpolated_data_2d<T, T, I>(
+                return utils::linear_interpolated_data_2d<T>(
                         data["/1/x"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/y"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/depths"_json_pointer].template get<types::vector2d_t<T>>());
             }
             if (type == "text_file") {
                 std::ifstream in(data[1].template get<std::string>());
-                return ::acstc::bathymetry<T, I>::from_text(in);
+                return ::acstc::bathymetry<T>::from_text(in);
             }
             if (type == "binary_file") {
                 std::ifstream in(data[1].template get<std::string>(), std::ios::binary);
-                return ::acstc::bathymetry<T, I>::from_binary(in);
+                return ::acstc::bathymetry<T>::from_binary(in);
             }
             throw std::logic_error("Unknown bathymetry type: " + type);
         }

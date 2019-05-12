@@ -7,48 +7,43 @@
 
 namespace acstc {
 
-    template<typename T = types::real_t, typename V = types::complex_t, typename I = utils::linear_interpolation>
+    template<typename T = types::real_t, typename V = T>
     class modes {
 
     public:
 
         modes() = delete;
 
-        template<typename CI>
-        static auto create(const config<T, CI>& config) {
+        static auto create(const config<T>& config) {
             return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data());
         }
 
-        template<typename CI>
-        static auto create(const config<T, CI>& config,
+        static auto create(const config<T>& config,
                 const T& x0, const T& x1, const size_t& nx,
                 const T& y0, const T& y1, const size_t& ny) {
             return _create(config, utils::mesh_1d(x0, x1, nx), utils::mesh_1d(y0, y1, ny),
                     config.bathymetry().field(x0, x1, nx, y0, y1, ny));
         }
 
-        template<typename CI>
-        static auto create(const config<T, CI>& config, const size_t& nx, const size_t& ny) {
+        static auto create(const config<T>& config, const size_t& nx, const size_t& ny) {
             const auto [x0, x1, y0, y1] = config.bounds();
             return create(config, x0, x1, nx, y0, y1, ny);
         }
 
-        template<typename CI>
-        static auto create(const config<T, CI>& config, const T& y0, const T& y1, const size_t& ny) {
+        static auto create(const config<T>& config, const T& y0, const T& y1, const size_t& ny) {
             return _create(config, utils::mesh_1d(y0, y1, ny),
                     config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny));
         }
 
-        template<typename CI>
-        static auto create(const config<T, CI>& config, const size_t& ny) {
+        static auto create(const config<T>& config, const size_t& ny) {
             const auto [y0, y1] = config.y_bounds();
             return create(config, y0, y1, ny);
         }
 
     private:
 
-        template<typename CI, typename XV, typename YV, typename DV>
-        static auto _create(const config<T, CI>& config, const XV& x, const YV& y, const DV& data) {
+        template<typename XV, typename YV, typename DV>
+        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data) {
             types::vector3d_t<V> k_j;
             types::vector3d_t<T> phi_j;
             const auto nx = x.size();
@@ -59,12 +54,12 @@ namespace acstc {
                     _fill_data(_calc_modes(config, data[i][j]), k_j, phi_j, nx, ny, i, j, m);
             }
             return std::make_tuple(
-                    utils::interpolated_data_2d(x, y, std::move(k_j)),
-                    utils::interpolated_data_2d(x, y, std::move(phi_j)));
+                    utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
+                    utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
         }
 
-        template<typename CI, typename YV, typename DV>
-        static auto _create(const config<T, CI>& config, const YV& y, const DV& data) {
+        template<typename YV, typename DV>
+        static auto _create(const config<T>& config, const YV& y, const DV& data) {
             types::vector2d_t<V> k_j;
             types::vector2d_t<T> phi_j;
             const auto ny = y.size();
@@ -72,12 +67,11 @@ namespace acstc {
             for (size_t i = 0; i < ny; ++i)
                 _fill_data(_calc_modes(config, data[i]), k_j, phi_j, ny, i, m);
             return std::make_tuple(
-                    utils::interpolated_data_1d(y, std::move(k_j)),
-                    utils::interpolated_data_1d(y, std::move(phi_j)));
+                    utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
+                    utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
         }
 
-        template<typename CI>
-        static auto _calc_modes(const config<T, CI>& config, const T& depth) {
+        static auto _calc_modes(const config<T>& config, const T& depth) {
             NormalModes n_m;
             n_m.iModesSubset = config.mode_subset();
             n_m.ppm = static_cast<unsigned int>(config.ppm());

@@ -31,17 +31,16 @@ namespace acstc {
                : _a(a), _b(b), _c(c), _hx((x1 - x0) / (nx - 1)),
                  _hy((y1 - y0) / (ny - 1)), _sq_hy(std::pow(_hy, 2)), _x0(x0), _x1(x1), _y0(y0), _y1(y1), _nx(nx), _ny(ny) {}
 
-        template<typename I>
-        explicit solver(const config<Arg, I>& config) :
+        explicit solver(const config<Arg>& config) :
             solver(config.a(), config.b(), config.c(),
                    config.x0(), config.x1(), config.nx(),
                    config.y0(), config.y1(), config.ny()) {}
 
-        template<typename IN, typename K0, typename I1, typename I2, typename CL>
+        template<typename IN, typename K0, typename CL>
         void solve(const IN& init,
                    const K0& k0,
-                   const utils::interpolated_data_2d<Arg, Val, I1>& k_int,
-                   const utils::interpolated_data_2d<Arg, Arg, I2>& phi_int,
+                   const utils::linear_interpolated_data_2d<Arg, Val>& k_int,
+                   const utils::linear_interpolated_data_2d<Arg, Arg>& phi_int,
                    CL&& callback,
                    const size_t past_n = 0,
                    const size_t num_workers = 1,
@@ -87,7 +86,8 @@ namespace acstc {
             callback(bv);
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
-                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0)), k(_ny), phi(_ny);
+                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0)), k(_ny);
+                types::vector1d_t<Arg> phi(_ny);
 
                 auto x = _hx;
                 auto solver = _get_thomas_solver();
@@ -133,11 +133,11 @@ namespace acstc {
 
         }
 
-        template<typename IN, typename K0, typename I1, typename I2, typename CL>
-        void solve_const(const IN& init,
+        template<typename IN, typename K0, typename CL>
+        void solve(const IN& init,
                          const K0& k0,
-                         const utils::interpolated_data_1d<Arg, Val, I1>& k_int,
-                         const utils::interpolated_data_1d<Arg, Arg, I2>& phi_int,
+                         const utils::linear_interpolated_data_1d<Arg, Val>& k_int,
+                         const utils::linear_interpolated_data_1d<Arg, Arg>& phi_int,
                          CL&& callback,
                          const size_t past_n = 0,
                          const size_t num_workers = 1,
