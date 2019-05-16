@@ -6,6 +6,7 @@
 #include <type_traits>
 #include "types.hpp"
 #include "utils.hpp"
+#include "delaunay.hpp"
 
 namespace acstc {
 
@@ -336,10 +337,10 @@ namespace acstc {
                 using typename interpolator_2d<T, V>::field_t;
                 using args_t = std::tuple<types::vector1d_t<T>, types::vector1d_t<T>>;
 
-                linear_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data)
-                        : _args(std::move(args)), _data(data) {}
-                linear_interpolator_2d(std::reference_wrapper<const args_t> args, data_t&& data)
-                        : _args(std::move(args)), _data(std::move(data)) {}
+                linear_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data) :
+                        _args(std::move(args)), _data(data) {}
+                linear_interpolator_2d(std::reference_wrapper<const args_t> args, data_t&& data) :
+                        _args(std::move(args)), _data(std::move(data)) {}
 
                 V point(const T& x, const T& y) const override {
                     const auto& xs = this->x();
@@ -369,7 +370,7 @@ namespace acstc {
                     return line(x, y()->front(), y()->back(), n);
                 }
 
-                void field(const T& x0, const T& x1, const T& y0, const T& y1, data_t& res) const override {
+                void field(const T& x0, const T& x1, const T& y0, const T& y1, field_t& res) const override {
                     __impl::linear_interpolation::field(x0, x1, y0, y1, x(), y(), _data, res);
                 }
 
@@ -411,6 +412,70 @@ namespace acstc {
 
             };
 
+            template<typename T, typename V = T>
+            class delaunay_interpolator_2d : interpolator_2d<T, V> {
+
+            public:
+
+                using data_t = types::vector1d_t<V>;
+                using typename interpolator_2d<T, V>::line_t;
+                using typename interpolator_2d<T, V>::field_t;
+                using args_t = std::tuple<delaunay_triangulation<T>>;
+
+                delaunay_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data) :
+                        _args(std::move(args)), _data(data) {}
+
+                delaunay_interpolator_2d(std::reference_wrapper<const args_t> args, data_t&& data) :
+                        _args(std::move(args)), _data(std::move(data)) {}
+
+                V point(const T& x, const T& y) const override {
+                    return _point(x, y, std::get<0>(_args.get()).find_triangle(x, y).get());
+                }
+
+                void line(const T& x, const T& y0, const T& y1, line_t& res) const override {
+                    const auto h = res.size() > 1 ? (y1 - y0) / (res.size() - 1) : T(0);
+                    auto t = std::get<0>(_args.get()).find_triangle(x, y0);
+                    res[0] = _point(x, y0, t.get());
+                    for (size_t i = 1; i < res.size(); ++i) {
+                        t = std::get<0>(_args.get()).find_triangle(t, x, y0 + h * i);
+                        res[i] = _point(x, y0 + h * i, t.get());
+                    }
+                }
+
+                line_t line(const T& x, const T& y0, const T& y1, const size_t nx) const {
+                    line_t res(nx);
+                    line(x, y0, y1, res);
+                    return res;
+                }
+
+                void field(const T& x0, const T& x1, const T& y0, const T& y1, field_t& res) const {
+                    const auto hx = res.size() > 1 ? (x1 - x0) / (res.size() - 1) : T(0);
+                    for (size_t i = 0; i < res.size(); ++i)
+                        line(x0 + i * hx, y0, y1, res[i]);
+                }
+
+                field_t field(const T& x0, const T& x1, const size_t nx, const T& y0, const T& y1, const size_t ny) const {
+                    field_t res(nx, line_t(ny));
+                    field(x0, x1, y0, y1, res);
+                    return res;
+                }
+
+            private:
+
+                data_t _data;
+                std::reference_wrapper<const args_t> _args;
+
+                template<typename C>
+                V _point(const T& x, const T& y, const C& t) const {
+                    const auto& [a, b, c] = t.points();
+                    const auto& [o, p, q] = t.get_points();
+                    const auto  [u, v, w] = t.barycentric_coordinates({x, y});
+                    const auto buff = u * _data[a.index()] + v * _data[b.index()] + w * _data[c.index()];
+                    return u * _data[a.index()] + v * _data[b.index()] + w * _data[c.index()];
+                }
+
+            };
+
         }// namespace interpolators
 
         template<typename I>
@@ -421,6 +486,9 @@ namespace acstc {
 
         template<typename T, typename V = T>
         using linear_interpolated_data_2d = interpolated_data<interpolators::linear_interpolator_2d<T, V>>;
+
+        template<typename T, typename V = T>
+        using delaunay_interpolated_data_2d = interpolated_data<interpolators::delaunay_interpolator_2d<T, V>>;
 
     }// namespace utils
 
