@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <fstream>
 #include "series.hpp"
+#include "hydrology.hpp"
 #include "bathymetry.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
@@ -21,7 +22,11 @@ namespace acstc {
 
     public:
 
-        config() : _data(_default_data()), _bathymetry(_create_bathymetry(_data["bathymetry"])) {
+        config() :
+            _data(_default_data()),
+            _bathymetry(_create_bathymetry(_data["bathymetry"])),
+            _hydrology(_create_hydrology(_data["hydrology"]))
+        {
             _fill_coefficients(_data["coefficients"]);
         }
 
@@ -31,6 +36,7 @@ namespace acstc {
             in >> data;
             _data.merge_patch(data);
             _bathymetry = _create_bathymetry(_data["bathymetry"]);
+            _hydrology = _create_hydrology(_data["hydrology"]);
         }
 
         CONFIG_DATA_FIELD(mode_subset, double)
@@ -66,6 +72,10 @@ namespace acstc {
             return _bathymetry[0];
         }
 
+        const auto& hydrology() const {
+            return _hydrology[0];
+        }
+
         auto coefficients() const {
             return std::make_tuple(a(), b(), c());
         }
@@ -74,6 +84,7 @@ namespace acstc {
 
         json _data;
         utils::linear_interpolated_data_2d<T> _bathymetry;
+        utils::delaunay_interpolated_data_2d<T> _hydrology;
         T _a, _b, _c;
 
         static json _default_data() {
@@ -88,10 +99,24 @@ namespace acstc {
                     {
                       { "x", { T(0), T(25000) } },
                       { "y", { T(-1000), T(1000) } },
-                      { "depths",
+                      { "values",
                         {
                           { T(25), T(375) },
                           { T(25), T(375) }
+                        }
+                      }
+                    }
+                  }
+                },
+                { "hydrology",
+                  { "values",
+                    {
+                      { "x", { T(0), T(1) } },
+                      { "z", { T(0), T(1) } },
+                      { "values",
+                        {
+                          { T(1500), T(1500) },
+                          { T(1500), T(1500) }
                         }
                       }
                     }
@@ -107,22 +132,31 @@ namespace acstc {
             };
         }
 
+        static auto _create_hydrology(const json& data) {
+            const auto type = data[0].template get<std::string>();
+            if (type == "values")
+                return ::acstc::hydrology<T>::from_table(
+                        data["/1/x"_json_pointer].template get<types::vector1d_t<T>>(),
+                        data["/1/z"_json_pointer].template get<types::vector1d_t<T>>(),
+                        data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
+            if (type == "test_file")
+                return ::acstc::hydrology<T>::from_text(std::ifstream(data[1].template get<std::string>()));
+            if (type == "binary_file")
+                return ::acstc::hydrology<T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+            throw std::logic_error("Unknown hydrology type: " + type);
+        }
+
         static auto _create_bathymetry(const json& data) {
             const auto type = data[0].template get<std::string>();
-            if (type == "values") {
-                return utils::linear_interpolated_data_2d<T>(
+            if (type == "values")
+                return ::acstc::bathymetry<T>::from_table(
                         data["/1/x"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/y"_json_pointer].template get<types::vector1d_t<T>>(),
-                        data["/1/depths"_json_pointer].template get<types::vector2d_t<T>>());
-            }
-            if (type == "text_file") {
-                std::ifstream in(data[1].template get<std::string>());
-                return ::acstc::bathymetry<T>::from_text(in);
-            }
-            if (type == "binary_file") {
-                std::ifstream in(data[1].template get<std::string>(), std::ios::binary);
-                return ::acstc::bathymetry<T>::from_binary(in);
-            }
+                        data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
+            if (type == "text_file")
+                return ::acstc::bathymetry<T>::from_text(std::ifstream(data[1].template get<std::string>()));
+            if (type == "binary_file")
+                return ::acstc::bathymetry<T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
             throw std::logic_error("Unknown bathymetry type: " + type);
         }
 

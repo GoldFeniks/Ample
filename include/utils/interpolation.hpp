@@ -474,6 +474,9 @@ namespace acstc {
                     return u * _data[a.index()] + v * _data[b.index()] + w * _data[c.index()];
                 }
 
+                template<typename, typename>
+                friend class __impl::interpolated_data;
+
             };
 
         }// namespace interpolators
