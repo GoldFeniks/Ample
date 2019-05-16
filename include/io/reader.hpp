@@ -9,7 +9,7 @@ namespace acstc {
     template<typename T, typename V = T>
     struct read_data {
 
-        types::vector1d_t<T> rows, cols;
+        types::vector1d_t<T> cols, rows;
         types::vector2d_t<V> data;
 
     };

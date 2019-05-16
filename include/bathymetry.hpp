@@ -14,7 +14,7 @@ namespace acstc {
         bathymetry() = delete;
 
         static auto from_binary(std::istream& stream) {
-            const auto [x, y, depths] = binary_table_reader<T>::read(stream);
+            const auto [y, x, depths] = binary_table_reader<T>::read(stream);
             return utils::linear_interpolated_data_2d<T>(std::move(x), std::move(y), std::move(depths));
         }
 
@@ -23,7 +23,7 @@ namespace acstc {
         }
 
         static auto from_text(std::istream& stream) {
-            const auto [x, y, depths] = table_reader<T>::read(stream);
+            const auto [y, x, depths] = table_reader<T>::read(stream);
             return utils::linear_interpolated_data_2d<T>(std::move(x), std::move(y), std::move(depths));
         }
 
