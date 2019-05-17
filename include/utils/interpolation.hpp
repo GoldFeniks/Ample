@@ -50,7 +50,7 @@ namespace acstc {
 
                 template<typename T, typename C, typename V, typename RV>
                 static auto line(const T& a, const T& b, const C& coords, const V& values, RV& res) {
-                    size_t i = 0;
+                    size_t i = 1;
                     const auto h = (b - a) / (res.size() - 1);
                     for (size_t j = 0; j < res.size(); ++j) {
                         const auto c = a + j * h;
@@ -121,6 +121,8 @@ namespace acstc {
             public:
 
                 using data_t = typename I::data_t;
+
+                interpolated_data() = default;
 
                 interpolated_data(const interpolated_data& other) {
                     *this = other;
@@ -207,6 +209,8 @@ namespace acstc {
             public:
 
                 using data_t = typename I::data_t;
+
+                interpolated_data() = default;
 
                 interpolated_data(const types::vector1d_t<data_t>& data) {
                     _interpolators.reserve(data.size());
