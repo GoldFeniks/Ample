@@ -55,10 +55,14 @@ namespace acstc {
                                    cb(mc, types::vector1d_t<Val>(_ny)),
                                    va(mc, types::vector1d_t<Val>(_ny)),
                                    vb(mc, types::vector1d_t<Val>(_ny)),
+                                   ik(mc, types::vector1d_t<Val>(_ny)),
                                    fs(mc, types::vector1d_t<Val>(_nx)),
                                    ls(mc, types::vector1d_t<Val>(_nx)),
                                    fv(mc, types::vector1d_t<Val>(_nx)),
                                    lv(mc, types::vector1d_t<Val>(_nx));
+            types::vector2d_t<Arg> ip(mc, types::vector1d_t<Arg>(_ny));
+
+            smoother sm(_hy, 200);
 
             for (size_t j = 0; j < mc; ++j) {
                 sq_k0[j] = std::pow(k0[j], 2);
@@ -73,14 +77,14 @@ namespace acstc {
                 va[j].assign(_ny, b1[j] / den);
                 s0[j] = im * tw * _c / k0[j] / (_b - _c) / _hx - on;
                 va[j][0] = va[j].back() = s0[j] + tw;
-                const auto k = k_int[j].template line(_x0, _y0, _y1, _ny);
-                const auto phi = phi_int[j].template line(_x0, _y0, _y1, _ny);
+                ik[j] = k_int[j].template line(_x0, _y0, _y1, _ny);
+                ip[j] = phi_int[j].template line(_x0, _y0, _y1, _ny);
                 for (size_t i = 0; i < _ny; ++i) {
                     cv[j][i] = init[j][i];
-                    bv[i] += phi[i] * init[j][i];
+                    bv[i] += ip[j][i] * init[j][i];
                 }
-                _fill_parameters(k0[j], k[0], fs[j], vb[j][0]);
-                _fill_parameters(k0[j], k.back(), ls[j], vb[j].back());
+                _fill_parameters(k0[j], ik[j][0], fs[j], vb[j][0]);
+                _fill_parameters(k0[j], ik[j].back(), ls[j], vb[j].back());
             }
 
             callback(bv);
@@ -97,6 +101,8 @@ namespace acstc {
                     for (size_t j = j0; j < j1; ++j) {
                         k_int[j].template line(x, _y0, _y1, k);
                         phi_int[j].template line(x, _y0, _y1, phi);
+
+                        sm.smooth(ik[j], ip[j], k, phi);
 
                         for (size_t m = 1; m < _ny - 1; ++m) {
                             const auto dd = (std::pow(k[m], 2) - sq_k0[j] - tw / _sq_hy) / sq_k0[j];
@@ -233,6 +239,36 @@ namespace acstc {
 
         const Arg _a, _b, _c, _hx, _hy, _sq_hy, _x0, _x1, _y0, _y1;
         const size_t _nx, _ny;
+
+        class smoother {
+
+        public:
+
+            smoother(const Arg& h, const size_t count) : _coefficients(count) {
+                const auto d = (count - 1) * h;
+                for (size_t i = 0; i < count; ++i)
+                    _coefficients[i] = i * h / d;
+            }
+
+            void smooth(const types::vector1d_t<Val>& k, const types::vector1d_t<Arg>& phi,
+                    types::vector1d_t<Val>& n_k, types::vector1d_t<Arg>& n_phi) const {
+                _smooth(k, n_k);
+                _smooth(phi, n_phi);
+            }
+
+        private:
+
+            types::vector1d_t<Arg> _coefficients;
+
+            template<typename T>
+            void _smooth(const types::vector1d_t<T>& values, types::vector1d_t<T>& n_values) const {
+                for (size_t i = 0, j = n_values.size() - _coefficients.size(); i < _coefficients.size(); ++i, ++j) {
+                    n_values[i] = values[i] * (on - _coefficients[i]) + _coefficients[i] * n_values[i];
+                    n_values[j] = n_values[j] * (on - _coefficients[i]) + _coefficients[i] * values[j];
+                }
+            }
+
+        };
 
         static auto _start_index(const size_t n, const size_t m) {
             if (n < m)

@@ -389,7 +389,7 @@ namespace acstc {
                 }
 
                 field_t field(const size_t  nx, const size_t ny) const {
-                    return field(x()->front(), x()->back(), nx, y()->front(), y()->back(), ny);
+                    return field(x().front(), x().back(), nx, y().front(), y().back(), ny);
                 }
 
                 inline const auto& x() const {

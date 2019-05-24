@@ -2,6 +2,7 @@
 #include <tuple>
 #include <cstddef>
 #include <istream>
+#include <algorithm>
 #include "normal_modes.h"
 #include "utils/types.hpp"
 #include "utils/interpolation.hpp"
@@ -121,7 +122,7 @@ namespace acstc {
         }
 
         static auto from_text(std::istream& stream) {
-            __impl::from_text<T, V>(stream);
+            return __impl::from_text<T, V>(stream);
         }
 
         static auto from_text(std::istream&& stream) {
@@ -243,14 +244,14 @@ namespace acstc {
             }
             for (size_t k = 0; k < n; ++k) {
                 k_j[k][i][j] = n_m.khs[k];
-                phi_j[k][i][j] = n_m.mfunctions_zr[0][k];
+                phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
             }
-            for (size_t l = 0; l < j; ++l)
-                for (size_t k = m; k < n; ++k)
+            for (size_t k = m; k < n; ++k)
+                for (size_t l = 0; l < j; ++l)
                     k_j[k][i][l] = k_j[k][i][j];
             for (size_t k = n; k < m; ++k)
                 k_j[k][i][j] = k_j[k][i][j - 1];
-            m = n;
+            m = std::max(n, m);
         }
 
         static auto _fill_data(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
@@ -262,10 +263,10 @@ namespace acstc {
             }
             for (size_t k = 0; k < n; ++k) {
                 k_j[k][i] = n_m.khs[k];
-                phi_j[k][i] = n_m.mfunctions_zr[0][k];
+                phi_j[k][i] = n_m.mfunctions_zr[k][0];
             }
-            for (size_t l = 0; l < i; ++l)
-                for (size_t k = m; k < n; ++k)
+            for (size_t k = m; k < n; ++k)
+                for (size_t l = 0; l < i; ++l)
                     k_j[k][l] = k_j[k][i];
             for (size_t k = n; k < m; ++k)
                 k_j[k][i] = k_j[k][i - 1];
