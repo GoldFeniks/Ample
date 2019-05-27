@@ -144,8 +144,9 @@ namespace acstc {
         CONFIG_DATA_FIELD(ppm, size_t)
         CONFIG_DATA_FIELD(ordRich, size_t)
         CONFIG_DATA_FIELD(f, T)
-        CONFIG_DATA_FIELD(zr, T)
-        CONFIG_DATA_FIELD(k_type, std::string)
+        CONFIG_DATA_FIELD(z_r, T)
+        CONFIG_DATA_FIELD(y_s, T)
+        CONFIG_DATA_FIELD(complex_modes, bool)
         CONFIG_DATA_FIELD(const_modes, bool)
         CONFIG_DATA_FIELD(k0, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(phi_s, types::vector1d_t<T>)
@@ -206,8 +207,9 @@ namespace acstc {
                 { "ppm", size_t(2) },
                 { "ordRich", size_t(3) },
                 { "f", T(100) },
-                { "zr", T(30) },
-                { "k_type", "complex"},
+                { "z_r", T(30) },
+                { "y_s", T(0) },
+                { "complex_modes", true },
                 { "const_modes", true },
                 { "bathymetry",
                   { "values",

@@ -44,7 +44,7 @@ namespace acstc {
                     _stream << value << _separator;
                 }
 
-                auto stream() {
+                auto& stream() {
                     return _stream;
                 }
 
@@ -67,7 +67,7 @@ namespace acstc {
                     _stream.write(reinterpret_cast<const char*>(&value), sizeof(T));
                 }
 
-                auto stream() {
+                auto& stream() {
                     return _stream;
                 }
 
@@ -151,35 +151,47 @@ namespace acstc {
 
         };
 
-        template<typename T>
-        class stream_writer : public writer<T, writer_bases::stream_writer_base<T>> {
+        template<typename T, typename Base>
+        class stream_writer : public writer<T, Base> {
 
         public:
 
-            explicit stream_writer(const std::string& filename, const std::string& separator = " ",
-                    const std::string& ending = "\n") :
-                writer<T, writer_bases::stream_writer_base<T>>(filename, separator, ending) {}
+            template<typename... Args>
+            explicit stream_writer(Args&&... args) : writer<T, Base>(std::forward<Args>(args)...) {}
+
+            using writer<T, Base>::stream;
 
         };
 
         template<typename T>
-        class binary_writer : public writer<T, writer_bases::binary_writer_base<T>> {
+        class text_writer : public stream_writer<T, writer_bases::stream_writer_base<T>> {
+
+        public:
+
+            explicit text_writer(const std::string& filename, const std::string& separator = " ",
+                    const std::string& ending = "\n") :
+                stream_writer<T, writer_bases::stream_writer_base<T>>(filename, separator, ending) {}
+
+        };
+
+        template<typename T>
+        class binary_writer : public stream_writer<T, writer_bases::binary_writer_base<T>> {
 
         public:
 
             explicit binary_writer(const std::string& filename) :
-                writer<T, writer_bases::binary_writer_base<T>>(filename) {}
+                stream_writer<T, writer_bases::binary_writer_base<T>>(filename) {}
 
         };
 
         template<typename T, typename Base>
-        class converter_writer : public writer<T, writer_bases::converter_writer_base<T, Base>> {
+        class stream_converter_writer : public stream_writer<T, writer_bases::converter_writer_base<T, Base>> {
 
         public:
 
             template<typename F, typename... Args>
-            explicit converter_writer(const F& convert, Args&&... args) :
-                    writer<T, writer_bases::converter_writer_base<T, Base>>(convert, std::forward<Args>(args)...) {}
+            explicit stream_converter_writer(const F& convert, Args&&... args) :
+                    stream_writer<T, writer_bases::converter_writer_base<T, Base>>(convert, std::forward<Args>(args)...) {}
 
         };
 

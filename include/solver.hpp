@@ -36,10 +36,10 @@ namespace acstc {
                    config.x0(), config.x1(), config.nx(),
                    config.y0(), config.y1(), config.ny()) {}
 
-        template<typename IN, typename K0, typename CL>
+        template<typename IN, typename K0, typename CL, typename VL>
         void solve(const IN& init,
                    const K0& k0,
-                   const utils::linear_interpolated_data_2d<Arg, Val>& k_int,
+                   const utils::linear_interpolated_data_2d<Arg, VL>& k_int,
                    const utils::linear_interpolated_data_2d<Arg, Arg>& phi_int,
                    CL&& callback,
                    const size_t past_n = 0,
@@ -49,13 +49,12 @@ namespace acstc {
             if (init.size() != mc || k_int.size() != mc || phi_int.size() != mc)
                 throw std::logic_error("Arguments init, k0, k, phi must be the same size");
 
-
+            types::vector2d_t<VL> ik(mc, types::vector1d_t<VL>(_ny));
             types::vector1d_t<Val> ca(mc), s0(mc), bv(_ny, Val(0)), g0(mc), g1(mc), b0(mc), b1(mc), sq_k0(mc);
             types::vector2d_t<Val> cv(mc, types::vector1d_t<Val>(_ny)),
                                    cb(mc, types::vector1d_t<Val>(_ny)),
                                    va(mc, types::vector1d_t<Val>(_ny)),
                                    vb(mc, types::vector1d_t<Val>(_ny)),
-                                   ik(mc, types::vector1d_t<Val>(_ny)),
                                    fs(mc, types::vector1d_t<Val>(_nx)),
                                    ls(mc, types::vector1d_t<Val>(_nx)),
                                    fv(mc, types::vector1d_t<Val>(_nx)),
@@ -90,7 +89,8 @@ namespace acstc {
             callback(bv);
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
-                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0)), k(_ny);
+                types::vector1d_t<VL> k(_ny);
+                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
                 types::vector1d_t<Arg> phi(_ny);
 
                 auto x = _hx;
@@ -139,10 +139,10 @@ namespace acstc {
 
         }
 
-        template<typename IN, typename K0, typename CL>
+        template<typename IN, typename K0, typename CL, typename VL>
         void solve(const IN& init,
                          const K0& k0,
-                         const utils::linear_interpolated_data_1d<Arg, Val>& k_int,
+                         const utils::linear_interpolated_data_1d<Arg, VL>& k_int,
                          const utils::linear_interpolated_data_1d<Arg, Arg>& phi_int,
                          CL&& callback,
                          const size_t past_n = 0,
@@ -152,7 +152,7 @@ namespace acstc {
             if (init.size() != mc || k_int.size() != mc || phi_int.size() != mc)
                 throw std::logic_error("Vectors init, k0, k, phi must be the same size");
 
-            types::vector2d_t<Val> k(mc);
+            types::vector2d_t<VL> k(mc);
             types::vector2d_t<Arg> phi(mc);
             for (size_t j = 0; j < mc; ++j) {
                 k[j] = k_int[j].line(_y0, _y1, _ny);
@@ -250,8 +250,9 @@ namespace acstc {
                     _coefficients[i] = i * h / d;
             }
 
-            void smooth(const types::vector1d_t<Val>& k, const types::vector1d_t<Arg>& phi,
-                    types::vector1d_t<Val>& n_k, types::vector1d_t<Arg>& n_phi) const {
+            template<typename T>
+            void smooth(const types::vector1d_t<T>& k, const types::vector1d_t<Arg>& phi,
+                    types::vector1d_t<T>& n_k, types::vector1d_t<Arg>& n_phi) const {
                 _smooth(k, n_k);
                 _smooth(phi, n_phi);
             }
@@ -281,7 +282,8 @@ namespace acstc {
             return res.real() < 0 ? -res : res;
         }
 
-        void _fill_parameters(const Val& k0, const Val& k, types::vector1d_t<Val>& ss, Val& vb) const {
+        template<typename T, typename V>
+        void _fill_parameters(const T& k0, const V& k, types::vector1d_t<Val>& ss, Val& vb) const {
             const auto nb = std::pow(k / k0, 2);
             const auto de = on - _c * (on - nb);
             const auto rr = tw * k0 * _sq_hy / (_b - _c) / _hx;
