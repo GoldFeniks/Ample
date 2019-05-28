@@ -9,6 +9,7 @@
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/callback.hpp"
+#include "utils/interpolation.hpp"
 #include "initial_conditions.hpp"
 #include "boost/program_options.hpp"
 
@@ -51,21 +52,22 @@ auto add_writer(const acstc::config<types::real_t>& config, const std::string& f
         if (binary) {
             const auto nx = static_cast<const uint32_t>(xs.size());
             const auto ny = static_cast<const uint32_t>(ys.size());
-            acstc::utils::binary_writer<double> writer(filename);
+            acstc::utils::binary_writer<types::real_t> writer(filename);
             writer.stream().write(reinterpret_cast<const char*>(&nx), sizeof(nx));
             writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
             writer.write(xs);
             writer.write(ys);
             function(acstc::utils::ekc_callback(step, [&](const auto data) {
-                writer.write(reinterpret_cast<const double*>(data.data()), ny * 2);
+                writer.write(reinterpret_cast<const types::real_t*>(data.data()), ny * 2);
             }));
             return;
         }
         acstc::utils::text_writer<types::real_t> writer(filename);
+        writer.stream() << xs.size() << ' ' << ys.size() << '\n';
         writer.write(xs);
         writer.write(ys);
         function(acstc::utils::ekc_callback(step, [&](const auto data) {
-            writer.write(reinterpret_cast<const double*>(data.data()), ys.size() * 2);
+            writer.write(reinterpret_cast<const types::real_t*>(data.data()), ys.size() * 2);
         }));
     };
 }
@@ -91,17 +93,83 @@ auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& 
     };
 }
 
+template<typename V, typename W>
+void write_modes(const acstc::utils::linear_interpolated_data_1d<types::real_t, V>& modes, W& writer) {
+    for (size_t i = 0; i < modes.size(); ++i)
+        writer(modes[i].data());
+}
+
+template<typename V, typename W>
+void write_modes(const acstc::utils::linear_interpolated_data_2d<types::real_t, V>& modes, W& writer) {
+    for (size_t i = 0; i < modes.size(); ++i)
+        for (const auto& it : modes[i].data())
+            writer(it);
+}
+
+template<typename KV, typename PV, typename W, typename WR>
+void write_modes(const KV& k_j, const PV& phi_j, W& writer, const WR& wrapper) {
+    auto wrapped = wrapper(writer);
+    write_modes(k_j, wrapped);
+    write_modes(phi_j, writer);
+}
+
+template<typename T, typename W>
+void save_modes(const acstc::config<types::real_t>& config, const std::string& filename, const bool binary, const W& wrapper) {
+    if (config.const_modes()) {
+        const auto [k_j, phi_j] = config.create_const_modes<T>();
+        const auto& ys = k_j.template get<0>();
+        if (binary) {
+            const auto ny = static_cast<const uint32_t>(ys.size());
+            const auto nm = static_cast<const uint32_t>(k_j.size());
+            acstc::utils::binary_writer<types::real_t> writer(filename);
+            writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
+            writer.stream().write(reinterpret_cast<const char*>(&nm), sizeof(nm));
+            writer.write(ys);
+            write_modes(k_j, phi_j, writer, wrapper);
+            return;
+        }
+        acstc::utils::text_writer<types::real_t> writer(filename);
+        writer.stream() << ys.size() << ' ' << k_j.size() << '\n';
+        writer.write(ys);
+        write_modes(k_j, phi_j, writer, wrapper);
+        return;
+    }
+    const auto [k_j, phi_j] = config.create_modes<T>();
+    const auto& xs = k_j.template get<0>();
+    const auto& ys = k_j.template get<1>();
+    if (binary) {
+            const auto nx = static_cast<const uint32_t>(xs.size());
+            const auto ny = static_cast<const uint32_t>(ys.size());
+            const auto nm = static_cast<const uint32_t>(k_j.size());
+            acstc::utils::binary_writer<types::real_t> writer(filename);
+            writer.stream().write(reinterpret_cast<const char*>(&nx), sizeof(nx));
+            writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
+            writer.stream().write(reinterpret_cast<const char*>(&nm), sizeof(nm));
+            writer.write(xs);
+            writer.write(ys);
+            write_modes(k_j, phi_j, writer, wrapper);
+            return;
+        }
+    acstc::utils::text_writer<types::real_t> writer(filename);
+    writer.stream() << xs.size() << ' ' << ys.size() << ' ' << k_j.size() << '\n';
+    writer.write(xs);
+    writer.write(ys);
+    write_modes(k_j, phi_j, writer, wrapper);
+}
+
 int main(int argc, char* argv[]) {
     po::positional_options_description positional;
-    positional.add("domain_config_filename", 1);
+    positional.add("job_type", 1);
 
     po::options_description generic("Generic options");
     size_t verbosity, report;
+    std::string config_filename;
     generic.add_options()
             ("help,h", "Print this message")
             ("verbosity,v", po::value(&verbosity)->default_value(0), "Verbosity level (0-1)")
             ("report,r", po::value(&report)->default_value(0)->value_name("k"),
-                    "If verbosity level > 0 report every k computed rows (0 = don't report)");
+                    "If verbosity level > 0 report every k computed rows (0 = don't report)")
+            ("config,c", po::value(&config_filename)->default_value("config.json"), "Config filename");
 
     po::options_description output("Output options");
     size_t step;
@@ -118,8 +186,9 @@ int main(int argc, char* argv[]) {
             ("buff,b", po::value(&buff_size)->default_value(100), "Buff size to be used during multithreaded calculation");
 
     po::options_description options;
-    std::string config_filename;
-    options.add_options()("domain_config_filename", po::value(&config_filename)->default_value("config.json"));
+    std::string job_type;
+    options.add_options()
+            ("job_type", po::value(&job_type)->default_value("solution"));
     options.add(generic).add(output).add(calculation);
 
     po::variables_map vm;
@@ -129,33 +198,51 @@ int main(int argc, char* argv[]) {
     if (vm.count("help")) {
         po::options_description desc;
         desc.add(generic).add(output).add(calculation);
-        std::cout << "Usage: domain_config_filename (=config.json) [options]\n" << desc << std::endl;
+        std::cout << "Usage: [solution|modes] (=solution) [options]\n" << desc << std::endl;
         return 0;
     }
 
     acstc::config config(config_filename);
-    acstc::solver solver(config);
 
-    const auto [k0, phi_s] = config.create_source_modes();
+    if (job_type == "solution") {
+        acstc::solver solver(config);
 
-    const auto init = get_initial_conditions(config, k0, phi_s);
+        const auto [k0, phi_s] = config.create_source_modes();
 
-    auto execute_function = [&](auto&& with_solver) {
-        auto with_verbosity = add_verbosity(verbosity, report, with_solver);
-        auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
-        with_writer();
-    };
+        const auto init = get_initial_conditions(config, k0, phi_s);
 
-    auto with_solver = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-        solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
-    };
+        auto execute_function = [&](auto&& with_solver) {
+            auto with_verbosity = add_verbosity(verbosity, report, with_solver);
+            auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
+            with_writer();
+        };
 
-    auto with_solver_const = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-        solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
-    };
+        auto with_solver = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+            solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
+        };
 
-    if (config.complex_modes())
-        execute_function(add_modes<types::complex_t>(config, k0.size(), with_solver, with_solver_const));
-    else
-        execute_function(add_modes<types::real_t>(config, k0.size(), with_solver, with_solver_const));
+        auto with_solver_const = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+            solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+        };
+
+        if (config.complex_modes())
+            execute_function(add_modes<types::complex_t>(config, k0.size(), with_solver, with_solver_const));
+        else
+            execute_function(add_modes<types::real_t>(config, k0.size(), with_solver, with_solver_const));
+        return 0;
+    }
+    if (job_type == "modes") {
+        if (config.complex_modes())
+            save_modes<types::complex_t>(config, output_filename, vm.count("binary") > 0,
+                [](auto& writer) {
+                    return [&](const auto& data) {
+                        writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * 2);
+                    };
+            });
+        else
+            save_modes<types::real_t>(config, output_filename, vm.count("binary") > 0,
+                    [](auto& writer) { return [&](const auto& data) { writer(data); }; });
+        return 0;
+    }
+    throw std::logic_error(std::string("Unknown job type: ") + job_type);
 }
