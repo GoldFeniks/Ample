@@ -196,6 +196,10 @@ namespace acstc {
                     return std::get<N>(_common_data);
                 }
 
+                void erase_last(const size_t n = 0) {
+                    _interpolators.erase(_interpolators.end() - n, _interpolators.end());
+                }
+
             protected:
 
                 std::tuple<Args...> _common_data;
@@ -234,6 +238,10 @@ namespace acstc {
 
                 const auto& operator[](const size_t i) const {
                     return _interpolators[i];
+                }
+
+                void erase_last(const size_t n) {
+                    _interpolators.erase(_interpolators.end() - n, _interpolators.end());
                 }
 
                 auto size() const {

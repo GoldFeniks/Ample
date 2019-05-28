@@ -184,38 +184,7 @@ namespace acstc {
             return const_from_binary(stream);
         }
 
-    private:
-
-        template<typename XV, typename YV, typename DV>
-        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data) {
-            types::vector3d_t<V> k_j;
-            types::vector3d_t<T> phi_j;
-            const auto nx = x.size();
-            const auto ny = y.size();
-            for (size_t i = 0; i < nx; ++i) {
-                size_t m = 0;
-                for (size_t j = 0; j < ny; ++j)
-                    _fill_data(_calc_modes(config, data[i][j]), k_j, phi_j, nx, ny, i, j, m);
-            }
-            return std::make_tuple(
-                    utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
-                    utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
-        }
-
-        template<typename YV, typename DV>
-        static auto _create(const config<T>& config, const YV& y, const DV& data) {
-            types::vector2d_t<V> k_j;
-            types::vector2d_t<T> phi_j;
-            const auto ny = y.size();
-            size_t m = 0;
-            for (size_t i = 0; i < ny; ++i)
-                _fill_data(_calc_modes(config, data[i]), k_j, phi_j, ny, i, m);
-            return std::make_tuple(
-                    utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
-                    utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
-        }
-
-        static auto _calc_modes(const config<T>& config, const T& depth) {
+        static auto calc_modes(const config<T>& config, const T& depth) {
             NormalModes n_m;
             n_m.iModesSubset = config.mode_subset();
             n_m.ppm = static_cast<unsigned int>(config.ppm());
@@ -233,6 +202,37 @@ namespace acstc {
             n_m.compute_khs();
             n_m.compute_mfunctions_zr();
             return n_m;
+        }
+
+    private:
+
+        template<typename XV, typename YV, typename DV>
+        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data) {
+            types::vector3d_t<V> k_j;
+            types::vector3d_t<T> phi_j;
+            const auto nx = x.size();
+            const auto ny = y.size();
+            for (size_t i = 0; i < nx; ++i) {
+                size_t m = 0;
+                for (size_t j = 0; j < ny; ++j)
+                    _fill_data(calc_modes(config, data[i][j]), k_j, phi_j, nx, ny, i, j, m);
+            }
+            return std::make_tuple(
+                    utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
+                    utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
+        }
+
+        template<typename YV, typename DV>
+        static auto _create(const config<T>& config, const YV& y, const DV& data) {
+            types::vector2d_t<V> k_j;
+            types::vector2d_t<T> phi_j;
+            const auto ny = y.size();
+            size_t m = 0;
+            for (size_t i = 0; i < ny; ++i)
+                _fill_data(calc_modes(config, data[i]), k_j, phi_j, ny, i, m);
+            return std::make_tuple(
+                    utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
+                    utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
         }
 
         static auto _fill_data(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,

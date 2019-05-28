@@ -184,16 +184,32 @@ namespace acstc {
 
         template<typename V = T>
         auto create_modes() const {
-            if (_data.find("modes") != _data.end())
+            if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create(_data["modes"]);
-            return ::acstc::modes<T, V>::create(*this, 10, 10); //placeholder
+            if (_data.count("mnx") && _data.count("mny"))
+                return ::acstc::modes<T, V>::create(*this, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>());
+            return ::acstc::modes<T, V>::create(*this);
         }
 
         template<typename V = T>
         auto create_const_modes() const {
-            if (_data.find("modes") != _data.end())
+            if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create_const(_data["modes"]);
-            return ::acstc::modes<T, V>::create(*this, 10); //placeholder
+            if (_data.count("mny"))
+                return ::acstc::modes<T, V>::create(*this, _data["mny"].template get<size_t>());
+            return ::acstc::modes<T, V>::create(*this, bathymetry().y().size());
+        }
+
+        auto create_source_modes() const {
+            if (_data.count("k0") && _data.count("phi_s"))
+                return std::make_tuple(k0(), phi_s());
+            auto n_m = ::acstc::modes<T>::calc_modes(*this, bathymetry().point(x0(), y_s()));
+            types::vector1d_t<T> k0(n_m.khs.size()), phi_s(n_m.khs.size());
+            for (size_t i = 0; i < k0.size(); ++i) {
+                k0[i] = n_m.khs[i];
+                phi_s[i] = n_m.mfunctions_zr[i][0];
+            }
+            return std::make_tuple(k0, phi_s);
         }
 
     private:
@@ -215,6 +231,8 @@ namespace acstc {
                 { "const_modes", true },
                 { "past_n", size_t(0) },
                 { "border_width", size_t(100) },
+                { "mnx", size_t(100) },
+                { "mny", size_t(100) },
                 { "bathymetry",
                   { "values",
                     {

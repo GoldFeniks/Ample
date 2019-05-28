@@ -71,14 +71,22 @@ auto add_writer(const acstc::config<types::real_t>& config, const std::string& f
 }
 
 template<typename T, typename F1, typename F2>
-auto add_modes(const acstc::config<types::real_t>& config, F1& function, F2& function_const) {
+auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& function, F2& function_const) {
     return [&](auto&& callback) mutable {
         if (config.const_modes()) {
-            const auto [k_j, phi_j] = config.create_const_modes<T>();
+            auto [k_j, phi_j] = config.create_const_modes<T>();
+            if (k_j.size() > mn) {
+                k_j.erase_last(k_j.size() - mn);
+                phi_j.erase_last(k_j.size() - mn);
+            }
             function_const(k_j, phi_j, callback);
             return;
         }
-        const auto [k_j, phi_j] = config.create_modes<T>();
+        auto [k_j, phi_j] = config.create_modes<T>();
+        if (k_j.size() > mn) {
+            k_j.erase_last(k_j.size() - mn);
+            phi_j.erase_last(k_j.size() - mn);
+        }
         function(k_j, phi_j, callback);
     };
 }
@@ -128,8 +136,7 @@ int main(int argc, char* argv[]) {
     acstc::config config(config_filename);
     acstc::solver solver(config);
 
-    const auto k0 = config.k0();
-    const auto phi_s = config.phi_s();
+    const auto [k0, phi_s] = config.create_source_modes();
 
     const auto init = get_initial_conditions(config, k0, phi_s);
 
@@ -148,7 +155,7 @@ int main(int argc, char* argv[]) {
     };
 
     if (config.complex_modes())
-        execute_function(add_modes<types::complex_t>(config, with_solver, with_solver_const));
+        execute_function(add_modes<types::complex_t>(config, k0.size(), with_solver, with_solver_const));
     else
-        execute_function(add_modes<types::real_t>(config, with_solver, with_solver_const));
+        execute_function(add_modes<types::real_t>(config, k0.size(), with_solver, with_solver_const));
 }
