@@ -43,6 +43,7 @@ namespace acstc {
                    const utils::linear_interpolated_data_2d<Arg, Arg>& phi_int,
                    CL&& callback,
                    const size_t past_n = 0,
+                   const size_t border_width = 100,
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto mc = k0.size();
@@ -61,7 +62,7 @@ namespace acstc {
                                    lv(mc, types::vector1d_t<Val>(_nx));
             types::vector2d_t<Arg> ip(mc, types::vector1d_t<Arg>(_ny));
 
-            smoother sm(_hy, 200);
+            smoother sm(_hy, border_width);
 
             for (size_t j = 0; j < mc; ++j) {
                 sq_k0[j] = std::pow(k0[j], 2);
@@ -141,13 +142,13 @@ namespace acstc {
 
         template<typename IN, typename K0, typename CL, typename VL>
         void solve(const IN& init,
-                         const K0& k0,
-                         const utils::linear_interpolated_data_1d<Arg, VL>& k_int,
-                         const utils::linear_interpolated_data_1d<Arg, Arg>& phi_int,
-                         CL&& callback,
-                         const size_t past_n = 0,
-                         const size_t num_workers = 1,
-                         const size_t buff_size = 100) const {
+                   const K0& k0,
+                   const utils::linear_interpolated_data_1d<Arg, VL>& k_int,
+                   const utils::linear_interpolated_data_1d<Arg, Arg>& phi_int,
+                   CL&& callback,
+                   const size_t past_n = 0,
+                   const size_t num_workers = 1,
+                   const size_t buff_size = 100) const {
             const auto mc = k0.size();
             if (init.size() != mc || k_int.size() != mc || phi_int.size() != mc)
                 throw std::logic_error("Vectors init, k0, k, phi must be the same size");

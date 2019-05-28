@@ -148,6 +148,8 @@ namespace acstc {
         CONFIG_DATA_FIELD(y_s, T)
         CONFIG_DATA_FIELD(complex_modes, bool)
         CONFIG_DATA_FIELD(const_modes, bool)
+        CONFIG_DATA_FIELD(past_n, size_t)
+        CONFIG_DATA_FIELD(border_width, size_t)
         CONFIG_DATA_FIELD(k0, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(phi_s, types::vector1d_t<T>)
 
@@ -211,6 +213,8 @@ namespace acstc {
                 { "y_s", T(0) },
                 { "complex_modes", true },
                 { "const_modes", true },
+                { "past_n", size_t(0) },
+                { "border_width", size_t(100) },
                 { "bathymetry",
                   { "values",
                     {

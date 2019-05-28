@@ -26,26 +26,26 @@ auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS
 
 template<typename F>
 auto add_verbosity(const size_t& verbosity, const size_t& report, F& function) {
-    return [&](const auto& k_j, const auto& phi_j, auto&& writer) mutable {
+    return [&](auto&& writer) mutable {
         if (verbosity) {
             const auto start = std::chrono::system_clock::now();
             if (report)
-                function(k_j, phi_j, acstc::utils::callbacks(writer, acstc::utils::progress_callback(report)));
+                function(acstc::utils::callbacks(writer, acstc::utils::progress_callback(report)));
             else
-                function(k_j, phi_j, writer);
+                function(writer);
             const auto end = std::chrono::system_clock::now();
             std::cout << "Elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
                 << "ms" << std::endl;
             return;
         }
-        function(k_j, phi_j, writer);
+        function(writer);
     };
 }
 
 template<typename F>
 auto add_writer(const acstc::config<types::real_t>& config, const std::string& filename,
         const bool binary, const size_t& step, F& function) {
-    return [&, binary](const auto& k_j, const auto& phi_j) mutable {
+    return [&, binary]() mutable {
         const auto xs = acstc::utils::mesh_1d(config.x0(), config.x1(), (config.nx() - 1) / step + 1);
         const auto ys = acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny());
         if (binary) {
@@ -56,7 +56,7 @@ auto add_writer(const acstc::config<types::real_t>& config, const std::string& f
             writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
             writer.write(xs);
             writer.write(ys);
-            function(k_j, phi_j, acstc::utils::ekc_callback(step, [&](const auto data) {
+            function(acstc::utils::ekc_callback(step, [&](const auto data) {
                 writer.write(reinterpret_cast<const double*>(data.data()), ny * 2);
             }));
             return;
@@ -64,22 +64,22 @@ auto add_writer(const acstc::config<types::real_t>& config, const std::string& f
         acstc::utils::text_writer<types::real_t> writer(filename);
         writer.write(xs);
         writer.write(ys);
-        function(k_j, phi_j, acstc::utils::ekc_callback(step, [&](const auto data) {
+        function(acstc::utils::ekc_callback(step, [&](const auto data) {
             writer.write(reinterpret_cast<const double*>(data.data()), ys.size() * 2);
         }));
     };
 }
 
-template<typename T, typename F>
-auto add_modes(const acstc::config<types::real_t>& config, F& function) {
-    return [&]() mutable {
+template<typename T, typename F1, typename F2>
+auto add_modes(const acstc::config<types::real_t>& config, F1& function, F2& function_const) {
+    return [&](auto&& callback) mutable {
         if (config.const_modes()) {
             const auto [k_j, phi_j] = config.create_const_modes<T>();
-            function(k_j, phi_j);
+            function_const(k_j, phi_j, callback);
             return;
         }
         const auto [k_j, phi_j] = config.create_modes<T>();
-        function(k_j, phi_j);
+        function(k_j, phi_j, callback);
     };
 }
 
@@ -103,10 +103,16 @@ int main(int argc, char* argv[]) {
             ("step,s", po::value(&step)->default_value(100)->value_name("k"), "Output every k-th computed row")
             ("binary", "Use binary output");
 
+    po::options_description calculation("Calculation options");
+    size_t num_workers, buff_size;
+    calculation.add_options()
+            ("workers,w", po::value(&num_workers)->default_value(1), "Number of workers for calculation")
+            ("buff,b", po::value(&buff_size)->default_value(100), "Buff size to be used during multithreaded calculation");
+
     po::options_description options;
     std::string config_filename;
     options.add_options()("domain_config_filename", po::value(&config_filename)->default_value("config.json"));
-    options.add(generic).add(output);
+    options.add(generic).add(output).add(calculation);
 
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv).positional(positional).options(options).run(), vm);
@@ -114,7 +120,7 @@ int main(int argc, char* argv[]) {
 
     if (vm.count("help")) {
         po::options_description desc;
-        desc.add(generic).add(output);
+        desc.add(generic).add(output).add(calculation);
         std::cout << "Usage: domain_config_filename (=config.json) [options]\n" << desc << std::endl;
         return 0;
     }
@@ -127,15 +133,22 @@ int main(int argc, char* argv[]) {
 
     const auto init = get_initial_conditions(config, k0, phi_s);
 
-    auto with_solver = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-        solver.solve(init, k0, k_j, phi_j, callback);
+    auto execute_function = [&](auto&& with_solver) {
+        auto with_verbosity = add_verbosity(verbosity, report, with_solver);
+        auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
+        with_writer();
     };
 
-    auto with_verbosity = add_verbosity(verbosity, report, with_solver);
-    auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
+    auto with_solver = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+        solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
+    };
+
+    auto with_solver_const = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+        solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+    };
 
     if (config.complex_modes())
-        add_modes<types::complex_t>(config, with_writer)();
+        execute_function(add_modes<types::complex_t>(config, with_solver, with_solver_const));
     else
-        add_modes<types::real_t>(config, with_writer)();
+        execute_function(add_modes<types::real_t>(config, with_solver, with_solver_const));
 }
