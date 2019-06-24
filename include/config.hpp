@@ -108,7 +108,7 @@ namespace acstc {
 
     }// namespace __impl;
 
-#define CONFIG_DATA_FIELD(field, type) const type field () const { return _data[#field].template get<type>(); }
+#define CONFIG_DATA_FIELD(field, type) const type& field () const { static const auto res = _data[#field].template get<type>(); return res; }
 #define CONFIG_FIELD(field) const auto& field () const { return _##field; }
 
     template<typename T = types::real_t>
@@ -146,6 +146,11 @@ namespace acstc {
         CONFIG_DATA_FIELD(f, T)
         CONFIG_DATA_FIELD(z_r, T)
         CONFIG_DATA_FIELD(y_s, T)
+        CONFIG_DATA_FIELD(n_layers, size_t)
+        CONFIG_DATA_FIELD(bottom_rho, T)
+        CONFIG_DATA_FIELD(bottom_layers, types::vector1d_t<T>)
+        CONFIG_DATA_FIELD(bottom_c1s, types::vector1d_t<T>)
+        CONFIG_DATA_FIELD(bottom_c2s, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(complex_modes, bool)
         CONFIG_DATA_FIELD(const_modes, bool)
         CONFIG_DATA_FIELD(past_n, size_t)
@@ -203,7 +208,7 @@ namespace acstc {
         auto create_source_modes() const {
             if (_data.count("k0") && _data.count("phi_s"))
                 return std::make_tuple(k0(), phi_s());
-            auto n_m = ::acstc::modes<T>::calc_modes(*this, bathymetry().point(x0(), y_s()));
+            auto n_m = ::acstc::modes<T>::calc_modes(*this, x0(), bathymetry().point(x0(), y_s()));
             types::vector1d_t<T> k0(n_m.khs.size()), phi_s(n_m.khs.size());
             for (size_t i = 0; i < k0.size(); ++i) {
                 k0[i] = n_m.khs[i];
@@ -227,6 +232,11 @@ namespace acstc {
                 { "f", T(100) },
                 { "z_r", T(30) },
                 { "y_s", T(0) },
+                { "n_layers", size_t(2) },
+                { "bottom_layers", { T(500) } },
+                { "bottom_c1s", { T(1700) } },
+                { "bottom_c2s", { T(1700) } },
+                { "bottom_rho", T(2) },
                 { "complex_modes", true },
                 { "const_modes", true },
                 { "past_n", size_t(0) },
@@ -259,11 +269,9 @@ namespace acstc {
                     }
                   }
                 },
-                { "k0", { T(0.1038243261), T(0.1010523078), T(0.09622526287) } },
-                { "phi_s", { T(0.0372559), T(0.0689824), T(0.0882298) } },
                 { "x0", T(0) },
                 { "x1", T(25000) },
-                { "nx", size_t(2501) },
+                { "nx", size_t(25001) },
                 { "y0", -T(1000) },
                 { "y1",  T(1000) },
                 { "ny", size_t(2001) },

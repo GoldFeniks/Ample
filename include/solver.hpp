@@ -90,9 +90,11 @@ namespace acstc {
             callback(bv);
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
-                types::vector1d_t<VL> k(_ny);
+                types::vector1d_t<VL> nk(_ny);
                 types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
                 types::vector1d_t<Arg> phi(_ny);
+
+                auto pk = ik;
 
                 auto x = _hx;
                 auto solver = _get_thomas_solver();
@@ -100,13 +102,13 @@ namespace acstc {
                 for (size_t i = 1; i < _nx; ++i) {
                     ov.assign(_ny, Val(0));
                     for (size_t j = j0; j < j1; ++j) {
-                        k_int[j].template line(x, _y0, _y1, k);
+                        k_int[j].template line(x, _y0, _y1, nk);
                         phi_int[j].template line(x, _y0, _y1, phi);
 
-                        sm.smooth(ik[j], ip[j], k, phi);
+                        sm.smooth(ik[j], ip[j], nk, phi);
 
                         for (size_t m = 1; m < _ny - 1; ++m) {
-                            const auto dd = (std::pow(k[m], 2) - sq_k0[j] - tw / _sq_hy) / sq_k0[j];
+                            const auto dd = ((std::pow(nk[m], 2) + std::pow(pk[j][m], 2)) / tw - sq_k0[j] - tw / _sq_hy) / sq_k0[j];
                             cb[j][m] = g0[j] + g1[j] * dd;
                             vb[j][m] = b0[j] + b1[j] * dd;
                         }
@@ -123,6 +125,7 @@ namespace acstc {
 
                         solver(va[j], vb[j], nv);
                         std::swap(cv[j], nv);
+                        std::swap(pk[j], nk);
 
                         fv[j][i] = cv[j][0];
                         lv[j][i] = cv[j].back();

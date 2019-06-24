@@ -5,6 +5,7 @@
 #include <algorithm>
 #include "normal_modes.h"
 #include "utils/types.hpp"
+#include "utils/utils.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {
@@ -136,6 +137,8 @@ namespace acstc {
             stream.read(reinterpret_cast<char*>(&m), sizeof(S));
             stream.read(reinterpret_cast<char*>(&k), sizeof(S));
             types::vector1d_t<T> x(n), y(m);
+            stream.read(reinterpret_cast<char*>(x.data()), sizeof(T) * n);
+            stream.read(reinterpret_cast<char*>(y.data()), sizeof(T) * m);
             types::vector3d_t<V> k_j(k, types::vector2d_t<V>(n, types::vector1d_t<V>(m)));
             types::vector3d_t<T> phi_j(k, types::vector2d_t<T>(n, types::vector1d_t<T>(m)));
             for (size_t j = 0; j < k; ++j)
@@ -184,17 +187,27 @@ namespace acstc {
             return const_from_binary(stream);
         }
 
-        static auto calc_modes(const config<T>& config, const T& depth) {
+        static auto calc_modes(const config<T>& config, const T& x, const T& depth) {
             NormalModes n_m;
             n_m.iModesSubset = config.mode_subset();
             n_m.ppm = static_cast<unsigned int>(config.ppm());
             n_m.ordRich = static_cast<unsigned int>(config.ordRich());
             n_m.zr.push_back(config.z_r());
             n_m.f = config.f();
-            n_m.M_c1s = { T(1500), T(1700) };
-            n_m.M_c2s = { T(1500), T(1700) };
-            n_m.M_rhos = { T(1), T(2) };
-            n_m.M_depths = { depth, T(500) };
+
+            auto buff = utils::mesh_1d(T(0), depth, config.n_layers() + 1);
+            n_m.M_depths.assign(buff.begin() + 1, buff.end());
+            n_m.M_depths.insert(n_m.M_depths.end(), config.bottom_layers().begin(), config.bottom_layers().end());
+
+            config.hydrology().line(x, T(0), depth, buff);
+            n_m.M_c1s.assign(buff.begin(), buff.end() - 1);
+            n_m.M_c1s.insert(n_m.M_c1s.end(), config.bottom_c1s().begin(), config.bottom_c1s().end());
+            n_m.M_c2s.assign(buff.begin() + 1, buff.end());
+            n_m.M_c2s.insert(n_m.M_c2s.end(), config.bottom_c2s().begin(), config.bottom_c2s().end());
+
+            n_m.M_rhos.resize(config.n_layers(), T(1));
+            n_m.M_rhos.resize(n_m.M_depths.size(), config.bottom_rho());
+
             n_m.M_Ns_points.resize(n_m.M_depths.size());
             n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(round(n_m.ppm * n_m.M_depths[0])));
             for (size_t i = 1; i < n_m.M_depths.size(); ++i)
@@ -215,7 +228,7 @@ namespace acstc {
             for (size_t i = 0; i < nx; ++i) {
                 size_t m = 0;
                 for (size_t j = 0; j < ny; ++j)
-                    _fill_data(calc_modes(config, data[i][j]), k_j, phi_j, nx, ny, i, j, m);
+                    _fill_data(calc_modes(config, x[i], data[i][j]), k_j, phi_j, nx, ny, i, j, m);
             }
             return std::make_tuple(
                     utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
@@ -229,7 +242,7 @@ namespace acstc {
             const auto ny = y.size();
             size_t m = 0;
             for (size_t i = 0; i < ny; ++i)
-                _fill_data(calc_modes(config, data[i]), k_j, phi_j, ny, i, m);
+                _fill_data(calc_modes(config, config.x0(), data[i]), k_j, phi_j, ny, i, m);
             return std::make_tuple(
                     utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
                     utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
