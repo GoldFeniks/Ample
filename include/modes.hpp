@@ -70,6 +70,7 @@ namespace acstc {
             read_coords(stream, y);
             modes_reader<T, V>::read(stream, k_j);
             modes_reader<T, T>::read(stream, phi_j);
+            ::acstc::modes<T, V>::smooth((y.back() - y.front()) / (y.size() - 1), count, k_j, phi_j);
             return std::make_tuple(
                     utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
                     utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
@@ -192,6 +193,7 @@ namespace acstc {
             for (size_t j = 0; j < k; ++j)
                 for (size_t i = 0; i < n; ++i)
                     stream.read(reinterpret_cast<char*>(phi_j[j][i].data()), sizeof(V) * m);
+            smooth((y.back() - y.front()) / (y.size() - 1), count, k_j, phi_j);
             return std::make_tuple(
                     utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
                     utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
@@ -262,6 +264,24 @@ namespace acstc {
             return n_m;
         }
 
+        static void smooth(const T& h, const size_t count, types::vector3d_t<V>& k, types::vector3d_t<T>& phi) {
+            types::vector1d_t<T> coefficients(count);
+            const auto d = (count - 1) * h;
+            for (size_t i = 0; i < count; ++i)
+                coefficients[i] = i * h / d;
+            for (size_t j = 0; j < k.size(); ++j) {
+                const auto& k0 = k[j][0];
+                const auto& phi0 = phi[j][0];
+                for (size_t i = 1; i < k.size(); ++i)
+                    for (size_t l = 0, r = k0.size() - count; l < count; ++l, ++r) {
+                        k[j][i][l] = k0[l] * (T(1) - coefficients[l]) + coefficients[l] * k[j][i][l];
+                        k[j][i][r] = k[j][i][r] * (T(1) - coefficients[l]) + coefficients[l] * k0[r];
+                        phi[j][i][l] = phi0[l] * (T(1) - coefficients[l]) + coefficients[l] * phi[j][i][l];
+                        phi[j][i][r] = phi[j][i][r] * (T(1) - coefficients[l]) + coefficients[l] * phi0[r];
+                    }
+            }
+        }
+
     private:
 
         template<typename XV, typename YV, typename DV>
@@ -276,6 +296,7 @@ namespace acstc {
                 for (size_t j = 0; j < ny; ++j)
                     _fill_data(calc_modes(config, x[i], data[i][j]), k_j, phi_j, nx, ny, i, j, mm, m);
             }
+            smooth((y.back() - y.front()) / (y.size() - 1), config.border_width(), k_j, phi_j);
             return std::make_tuple(
                     utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
                     utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));

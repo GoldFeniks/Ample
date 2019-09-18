@@ -62,8 +62,6 @@ namespace acstc {
                                    lv(mc, types::vector1d_t<Val>(_nx));
             types::vector2d_t<Arg> ip(mc, types::vector1d_t<Arg>(_ny));
 
-            smoother sm(_hy, border_width);
-
             for (size_t j = 0; j < mc; ++j) {
                 sq_k0[j] = std::pow(k0[j], 2);
                 const auto den = sq_k0[j] * _sq_hy;
@@ -104,8 +102,6 @@ namespace acstc {
                     for (size_t j = j0; j < j1; ++j) {
                         k_int[j].template line(x, _y0, _y1, nk);
                         phi_int[j].template line(x, _y0, _y1, phi);
-
-                        sm.smooth(ik[j], ip[j], nk, phi);
 
                         for (size_t m = 1; m < _ny - 1; ++m) {
                             const auto dd = ((std::pow(nk[m], 2) + std::pow(pk[j][m], 2)) / tw - sq_k0[j] - tw / _sq_hy) / sq_k0[j];
@@ -243,37 +239,6 @@ namespace acstc {
 
         const Arg _a, _b, _c, _hx, _hy, _sq_hy, _x0, _x1, _y0, _y1;
         const size_t _nx, _ny;
-
-        class smoother {
-
-        public:
-
-            smoother(const Arg& h, const size_t count) : _coefficients(count) {
-                const auto d = (count - 1) * h;
-                for (size_t i = 0; i < count; ++i)
-                    _coefficients[i] = i * h / d;
-            }
-
-            template<typename T>
-            void smooth(const types::vector1d_t<T>& k, const types::vector1d_t<Arg>& phi,
-                    types::vector1d_t<T>& n_k, types::vector1d_t<Arg>& n_phi) const {
-                _smooth(k, n_k);
-                _smooth(phi, n_phi);
-            }
-
-        private:
-
-            types::vector1d_t<Arg> _coefficients;
-
-            template<typename T>
-            void _smooth(const types::vector1d_t<T>& values, types::vector1d_t<T>& n_values) const {
-                for (size_t i = 0, j = n_values.size() - _coefficients.size(); i < _coefficients.size(); ++i, ++j) {
-                    n_values[i] = values[i] * (on - _coefficients[i]) + _coefficients[i] * n_values[i];
-                    n_values[j] = n_values[j] * (on - _coefficients[i]) + _coefficients[i] * values[j];
-                }
-            }
-
-        };
 
         static auto _start_index(const size_t n, const size_t m) {
             if (n < m)

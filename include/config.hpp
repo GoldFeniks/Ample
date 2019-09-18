@@ -193,7 +193,7 @@ namespace acstc {
         template<typename V = T>
         auto create_modes() const {
             if (_data.count("modes"))
-                return __impl::modes_creator<T, V>::create(_data["modes"]);
+                return __impl::modes_creator<T, V>::create(_data["modes"], border_width());
             if (_data.count("mnx") && _data.count("mny"))
                 return ::acstc::modes<T, V>::create(*this, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>());
             return ::acstc::modes<T, V>::create(*this);
