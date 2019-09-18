@@ -14,7 +14,7 @@ find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(Boost 1.69 COMPONENTS program_options REQUIRED)
 include_directories(${PROJECT_DIR}/include ${PROJECT_DIR}/modules/Acoustics-at-home/src/cambala
-        ${PROJECT_DIR}/modules/delaunay ${ALGLIB_INCLUDES} ${Boost_INCLUDE_DIR})
+        ${PROJECT_DIR}/modules/delaunay ${PROJECT_DIR}/modules/DORK/include/ ${ALGLIB_INCLUDES} ${Boost_INCLUDE_DIR})
 
 add_executable(ACOUSTIC ${PROJECT_DIR}/build/main.cpp ${PROJECT_DIR}/modules/Acoustics-at-home/src/cambala/normal_modes.cpp)
 target_link_libraries(ACOUSTIC ${ALGLIB_LIBRARIES} Threads::Threads nlohmann_json::nlohmann_json ${Boost_LIBRARIES})
