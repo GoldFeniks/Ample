@@ -13,7 +13,7 @@ namespace acstc {
 
         bathymetry() = delete;
 
-        static auto from_table(types::vector1d_t<T>&& x,types::vector1d_t<T>&& y, types::vector2d_t<T>&& v) {
+        static auto from_table(types::vector1d_t<T>&& x, types::vector1d_t<T>&& y, types::vector2d_t<T>&& v) {
             return utils::linear_interpolated_data_2d<T>(x, y, v);
         }
 

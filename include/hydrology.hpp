@@ -20,11 +20,11 @@ namespace acstc {
             px.reserve(z.size() * x.size());
             pz.reserve(z.size() * x.size());
             vv.reserve(z.size() * x.size());
-            for (size_t i = 0; i < x.size(); ++i)
-                for (size_t j = 0; j < z.size(); ++j)
+            for (size_t i = 0; i < z.size(); ++i)
+                for (size_t j = 0; j < x.size(); ++j)
                     if (v[i][j] > -T(1e-10)) {
-                        pz.emplace_back(z[j]);
-                        px.emplace_back(x[i]);
+                        pz.emplace_back(z[i]);
+                        px.emplace_back(x[j]);
                         vv.emplace_back(v[i][j]);
                     }
             pz.shrink_to_fit();

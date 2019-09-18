@@ -13,6 +13,9 @@ namespace acstc {
     template<typename T>
     class config;
 
+    template<typename T, typename V>
+    class modes;
+
     namespace __impl {
 
         template<typename T>
@@ -57,7 +60,7 @@ namespace acstc {
         };
 
         template<typename T, typename V>
-        auto from_text(std::istream& stream) {
+        auto from_text(std::istream& stream, const size_t count) {
             size_t n, m, k;
             stream >> n >> m >> k;
             types::vector1d_t<T> x(n), y(m);
@@ -86,6 +89,48 @@ namespace acstc {
                     utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
                     utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
         }
+
+        template<typename T, typename V>
+        struct modes_copier {
+
+            static void copy(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
+                    const size_t& i, const size_t& j) {
+                for (size_t k = 0; k < std::min(n_m.ckhs.size(), k_j.size()); ++k) {
+                    k_j[k][i][j] = n_m.ckhs[k];
+                    phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
+                }
+            }
+
+            static void copy(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
+                             const size_t& i) {
+                for (size_t k = 0; k < std::min(n_m.ckhs.size(), k_j.size()); ++k) {
+                    k_j[k][i] = n_m.ckhs[k];
+                    phi_j[k][i] = n_m.mfunctions_zr[k][0];
+                }
+            }
+
+        };
+
+        template<typename T>
+        struct modes_copier<T, T> {
+
+            static void copy(const NormalModes& n_m, types::vector3d_t<T>& k_j, types::vector3d_t<T>& phi_j,
+                             const size_t& i, const size_t& j) {
+                for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
+                    k_j[k][i][j] = n_m.khs[k];
+                    phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
+                }
+            }
+
+            static void copy(const NormalModes& n_m, types::vector2d_t<T>& k_j, types::vector2d_t<T>& phi_j,
+                             const size_t& i) {
+                for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
+                    k_j[k][i] = n_m.khs[k];
+                    phi_j[k][i] = n_m.mfunctions_zr[k][0];
+                }
+            }
+
+        };
 
     }// namespace __impl
 
@@ -122,16 +167,16 @@ namespace acstc {
             return create(config, y0, y1, ny);
         }
 
-        static auto from_text(std::istream& stream) {
-            return __impl::from_text<T, V>(stream);
+        static auto from_text(std::istream& stream, const size_t count) {
+            return __impl::from_text<T, V>(stream, count);
         }
 
-        static auto from_text(std::istream&& stream) {
-            return from_text(stream);
+        static auto from_text(std::istream&& stream, const size_t count) {
+            return from_text(stream, count);
         }
 
         template<typename S = uint32_t>
-        static auto from_binary(std::istream& stream) {
+        static auto from_binary(std::istream& stream, const size_t count) {
             S n, m, k;
             stream.read(reinterpret_cast<char*>(&n), sizeof(S));
             stream.read(reinterpret_cast<char*>(&m), sizeof(S));
@@ -153,8 +198,8 @@ namespace acstc {
         }
 
         template<typename S = uint32_t>
-        static auto from_binary(std::istream&& stream) {
-            return from_binary<S>(stream);
+        static auto from_binary(std::istream&& stream, const size_t count) {
+            return from_binary<S>(stream, count);
         }
 
         static auto const_from_text(std::istream& stream) {
@@ -223,12 +268,13 @@ namespace acstc {
         static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data) {
             types::vector3d_t<V> k_j;
             types::vector3d_t<T> phi_j;
+            const auto mm = config.max_mode();
             const auto nx = x.size();
             const auto ny = y.size();
             for (size_t i = 0; i < nx; ++i) {
                 size_t m = 0;
                 for (size_t j = 0; j < ny; ++j)
-                    _fill_data(calc_modes(config, x[i], data[i][j]), k_j, phi_j, nx, ny, i, j, m);
+                    _fill_data(calc_modes(config, x[i], data[i][j]), k_j, phi_j, nx, ny, i, j, mm, m);
             }
             return std::make_tuple(
                     utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
@@ -239,26 +285,24 @@ namespace acstc {
         static auto _create(const config<T>& config, const YV& y, const DV& data) {
             types::vector2d_t<V> k_j;
             types::vector2d_t<T> phi_j;
+            const auto mm = config.max_mode();
             const auto ny = y.size();
             size_t m = 0;
             for (size_t i = 0; i < ny; ++i)
-                _fill_data(calc_modes(config, config.x0(), data[i]), k_j, phi_j, ny, i, m);
+                _fill_data(calc_modes(config, config.x0(), data[i]), k_j, phi_j, ny, i, mm, m);
             return std::make_tuple(
                     utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
                     utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
         }
 
         static auto _fill_data(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
-                const size_t& nx, const size_t& ny, const size_t& i, const size_t& j, size_t& m) {
-            const auto n = n_m.khs.size();
+                const size_t& nx, const size_t& ny, const size_t& i, const size_t& j, const size_t& mm, size_t& m) {
+            const auto n = std::min(n_m.khs.size(), mm);
             if (n > k_j.size()) {
                 k_j.resize(n, types::vector2d_t<V>(nx, types::vector1d_t<V>(ny, V(0))));
                 phi_j.resize(n, types::vector2d_t<T>(nx, types::vector1d_t<T>(ny, T(0))));
             }
-            for (size_t k = 0; k < n; ++k) {
-                k_j[k][i][j] = n_m.khs[k];
-                phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
-            }
+            __impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i, j);
             for (size_t k = m; k < n; ++k)
                 for (size_t l = 0; l < j; ++l)
                     k_j[k][i][l] = k_j[k][i][j];
@@ -268,22 +312,19 @@ namespace acstc {
         }
 
         static auto _fill_data(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
-                               const size_t& ny, const size_t& i, size_t& m) {
-            const auto n = n_m.khs.size();
+                               const size_t& ny, const size_t& i, const size_t& mm, size_t& m) {
+            const auto n = std::min(n_m.khs.size(), mm);
             if (n > k_j.size()) {
                 k_j.resize(n, types::vector1d_t<V>(ny, V(0)));
                 phi_j.resize(n, types::vector1d_t<T>(ny, T(0)));
             }
-            for (size_t k = 0; k < n; ++k) {
-                k_j[k][i] = n_m.khs[k];
-                phi_j[k][i] = n_m.mfunctions_zr[k][0];
-            }
+            __impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i);
             for (size_t k = m; k < n; ++k)
                 for (size_t l = 0; l < i; ++l)
                     k_j[k][l] = k_j[k][i];
             for (size_t k = n; k < m; ++k)
                 k_j[k][i] = k_j[k][i - 1];
-            m = n;
+            m = std::max(n, m);
         }
 
     };

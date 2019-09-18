@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <iostream>
 #include <algorithm>
+#include "dork.hpp"
 #include "config.hpp"
 #include "solver.hpp"
 #include "utils/types.hpp"
@@ -74,12 +75,12 @@ auto add_writer(const acstc::config<types::real_t>& config, const std::string& f
 
 template<typename T, typename F1, typename F2>
 auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& function, F2& function_const) {
-    return [&](auto&& callback) mutable {
+    return [&, mn](auto&& callback) mutable {
         if (config.const_modes()) {
             auto [k_j, phi_j] = config.create_const_modes<T>();
             if (k_j.size() > mn) {
                 k_j.erase_last(k_j.size() - mn);
-                phi_j.erase_last(k_j.size() - mn);
+                phi_j.erase_last(phi_j.size() - mn);
             }
             function_const(k_j, phi_j, callback);
             return;
@@ -87,7 +88,7 @@ auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& 
         auto [k_j, phi_j] = config.create_modes<T>();
         if (k_j.size() > mn) {
             k_j.erase_last(k_j.size() - mn);
-            phi_j.erase_last(k_j.size() - mn);
+            phi_j.erase_last(phi_j.size() - mn);
         }
         function(k_j, phi_j, callback);
     };

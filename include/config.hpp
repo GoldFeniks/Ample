@@ -20,7 +20,7 @@ namespace acstc {
         template<typename T, typename V>
         struct modes_creator {
 
-            static auto create(const json& data) {
+            static auto create(const json& data, const size_t count) {
                 const auto type = data[0].template get<std::string>();
                 if (type == "values") {
                     const auto x = data["/1/x"_json_pointer].template get<types::vector1d_t<T>>();
@@ -31,15 +31,16 @@ namespace acstc {
                         for (size_t j = 0; j < x.size(); ++j)
                             for (size_t k = 0; k < y.size(); ++k)
                                 k_data[i][j][k] = V(k_values[i][j][2 * k], k_values[i][j][2 * k + 1]);
+                    auto phi_data = data["/1/phi"_json_pointer].template get<types::vector3d_t<T>>();
+                    ::acstc::modes<T, V>::smooth((y.back() - y.front()) / (y.size() - 1), count, k_data, phi_data);
                     return std::make_tuple(
                             utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_data)),
-                            utils::linear_interpolated_data_2d<T, T>(x, y,
-                                    data["/1/phi"_json_pointer].template get<types::vector3d_t<T>>()));
+                            utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_data)));
                 }
                 if (type == "text_file")
-                    return ::acstc::modes<T, V>::from_text(std::ifstream(data[1].template get<std::string>()));
+                    return ::acstc::modes<T, V>::from_text(std::ifstream(data[1].template get<std::string>()), count);
                 if (type == "binary_file")
-                    return ::acstc::modes<T, V>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+                    return ::acstc::modes<T, V>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary), count);
                 throw std::logic_error("Unknown modes type: " + type);
             }
 
@@ -69,21 +70,22 @@ namespace acstc {
         template<typename T>
         struct modes_creator<T, T> {
 
-            static auto create(const json& data) {
+            static auto create(const json& data, const size_t count) {
                 const auto type = data[0].template get<std::string>();
                 if (type == "values") {
                     const auto x = data["/1/x"_json_pointer].template get<types::vector1d_t<T>>();
                     const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
+                    auto k_data = data["/1/k"_json_pointer].template get<types::vector3d_t<T>>();
+                    auto phi_data = data["/1/phi"_json_pointer].template get<types::vector3d_t<T>>();
+                    ::acstc::modes<T, T>::smooth((y.back() - y.front()) / (y.size() - 1), count, k_data, phi_data);
                     return std::make_tuple(
-                            utils::linear_interpolated_data_2d<T, T>(x, y,
-                                    data["/1/k"_json_pointer].template get<types::vector3d_t<T>>()),
-                            utils::linear_interpolated_data_2d<T, T>(x, y,
-                                    data["/1/phi"_json_pointer].template get<types::vector3d_t<T>>()));
+                            utils::linear_interpolated_data_2d<T, T>(x, y, std::move(k_data)),
+                            utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_data)));
                 }
                 if (type == "text_file")
-                    return ::acstc::modes<T, T>::from_text(std::ifstream(data[1].template get<std::string>()));
+                    return ::acstc::modes<T, T>::from_text(std::ifstream(data[1].template get<std::string>()), count);
                 if (type == "binary_file")
-                    return ::acstc::modes<T, T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+                    return ::acstc::modes<T, T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary), count);
                 throw std::logic_error("Unknown modes type: " + type);
             }
 
@@ -135,6 +137,7 @@ namespace acstc {
         }
 
         CONFIG_DATA_FIELD(mode_subset, double)
+        CONFIG_DATA_FIELD(max_mode, size_t)
         CONFIG_DATA_FIELD(x0, T)
         CONFIG_DATA_FIELD(x1, T)
         CONFIG_DATA_FIELD(nx, size_t)
@@ -227,6 +230,7 @@ namespace acstc {
         static json _default_data() {
             return {
                 { "mode_subset", -1 },
+                { "max_mode", size_t(-1) },
                 { "ppm", size_t(2) },
                 { "ordRich", size_t(3) },
                 { "f", T(100) },
@@ -286,7 +290,7 @@ namespace acstc {
                         data["/1/x"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/z"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
-            if (type == "test_file")
+            if (type == "text_file")
                 return ::acstc::hydrology<T>::from_text(std::ifstream(data[1].template get<std::string>()));
             if (type == "binary_file")
                 return ::acstc::hydrology<T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
