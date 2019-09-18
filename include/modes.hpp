@@ -96,16 +96,16 @@ namespace acstc {
 
             static void copy(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
                     const size_t& i, const size_t& j) {
-                for (size_t k = 0; k < std::min(n_m.ckhs.size(), k_j.size()); ++k) {
-                    k_j[k][i][j] = n_m.ckhs[k];
+                for (size_t k = 0; k < std::min(n_m.mattenuation.size(), k_j.size()); ++k) {
+                    k_j[k][i][j] = n_m.mattenuation[k];
                     phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
                 }
             }
 
             static void copy(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
                              const size_t& i) {
-                for (size_t k = 0; k < std::min(n_m.ckhs.size(), k_j.size()); ++k) {
-                    k_j[k][i] = n_m.ckhs[k];
+                for (size_t k = 0; k < std::min(n_m.mattenuation.size(), k_j.size()); ++k) {
+                    k_j[k][i] = n_m.mattenuation[k];
                     phi_j[k][i] = n_m.mfunctions_zr[k][0];
                 }
             }
@@ -241,6 +241,7 @@ namespace acstc {
             n_m.ordRich = static_cast<unsigned int>(config.ordRich());
             n_m.zr.push_back(config.z_r());
             n_m.f = config.f();
+            n_m.M_betas = config.betas();
 
             auto buff = utils::mesh_1d(T(0), depth, config.n_layers() + 1);
             n_m.M_depths.assign(buff.begin() + 1, buff.end());
@@ -259,8 +260,11 @@ namespace acstc {
             n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(round(n_m.ppm * n_m.M_depths[0])));
             for (size_t i = 1; i < n_m.M_depths.size(); ++i)
                 n_m.M_Ns_points[i] = static_cast<unsigned>(round(n_m.ppm * (n_m.M_depths[i] - n_m.M_depths[i - 1])));
+
             n_m.compute_khs();
             n_m.compute_mfunctions_zr();
+            if (config.complex_modes())
+                n_m.compute_mattenuation();
             return n_m;
         }
 
