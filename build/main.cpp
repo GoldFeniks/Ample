@@ -186,17 +186,17 @@ int main(int argc, char* argv[]) {
             ("step,s", po::value(&step)->default_value(100)->value_name("k"), "Output every k-th computed row")
             ("binary", "Use binary output");
 
-    po::options_description calculation("Calculation options");
+    po::options_description computation("Computation options");
     size_t num_workers, buff_size;
-    calculation.add_options()
-            ("workers,w", po::value(&num_workers)->default_value(1), "Number of workers for calculation")
-            ("buff,b", po::value(&buff_size)->default_value(100), "Buff size to be used during multithreaded calculation");
+    computation.add_options()
+            ("workers,w", po::value(&num_workers)->default_value(1), "Number of workers for computation")
+            ("buff,b", po::value(&buff_size)->default_value(100), "Buff size to be used during multithreaded computation");
 
     po::options_description options;
     std::string job_type;
     options.add_options()
             ("job_type", po::value(&job_type)->default_value("solution"));
-    options.add(generic).add(output).add(calculation);
+    options.add(generic).add(output).add(computation);
 
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv).positional(positional).options(options).run(), vm);
@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
 
     if (vm.count("help")) {
         po::options_description desc;
-        desc.add(generic).add(output).add(calculation);
+        desc.add(generic).add(output).add(computation);
         std::cout << "Usage: [solution|modes] (=solution) [options]\n" << desc << std::endl;
         return 0;
     }
