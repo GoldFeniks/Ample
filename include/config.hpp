@@ -147,6 +147,7 @@ namespace acstc {
         CONFIG_DATA_FIELD(ppm, size_t)
         CONFIG_DATA_FIELD(ordRich, size_t)
         CONFIG_DATA_FIELD(f, T)
+        CONFIG_DATA_FIELD(z_s, T)
         CONFIG_DATA_FIELD(z_r, T)
         CONFIG_DATA_FIELD(y_s, T)
         CONFIG_DATA_FIELD(n_layers, size_t)
@@ -157,6 +158,7 @@ namespace acstc {
         CONFIG_DATA_FIELD(bottom_c2s, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(complex_modes, bool)
         CONFIG_DATA_FIELD(const_modes, bool)
+        CONFIG_DATA_FIELD(additive_depth, bool)
         CONFIG_DATA_FIELD(past_n, size_t)
         CONFIG_DATA_FIELD(border_width, size_t)
         CONFIG_DATA_FIELD(k0, types::vector1d_t<T>)
@@ -192,27 +194,37 @@ namespace acstc {
         }
 
         template<typename V = T>
-        auto create_modes() const {
+        auto create_modes(const T& z) const {
             if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create(_data["modes"], border_width());
             if (_data.count("mnx") && _data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>());
-            return ::acstc::modes<T, V>::create(*this);
+                return ::acstc::modes<T, V>::create(*this, z, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>());
+            return ::acstc::modes<T, V>::create(*this, z);
+        }
+
+        template<typename V = T>
+        auto create_modes() const {
+            return create_modes<V>(z_r());
+        }
+
+        template<typename V = T>
+        auto create_const_modes(const T& z) const {
+            if (_data.count("modes"))
+                return __impl::modes_creator<T, V>::create_const(_data["modes"]);
+            if (_data.count("mny"))
+                return ::acstc::modes<T, V>::create(*this, z, _data["mny"].template get<size_t>());
+            return ::acstc::modes<T, V>::create(*this, z, bathymetry().y().size());
         }
 
         template<typename V = T>
         auto create_const_modes() const {
-            if (_data.count("modes"))
-                return __impl::modes_creator<T, V>::create_const(_data["modes"]);
-            if (_data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, _data["mny"].template get<size_t>());
-            return ::acstc::modes<T, V>::create(*this, bathymetry().y().size());
+            return create_const_modes<V>(z_r());
         }
 
         auto create_source_modes() const {
             if (_data.count("k0") && _data.count("phi_s"))
                 return std::make_tuple(k0(), phi_s());
-            auto n_m = ::acstc::modes<T>::calc_modes(*this, x0(), bathymetry().point(x0(), y_s()));
+            auto n_m = ::acstc::modes<T>::calc_modes(*this, x0(), bathymetry().point(x0(), y_s()), z_s());
             types::vector1d_t<T> k0(n_m.khs.size()), phi_s(n_m.khs.size());
             for (size_t i = 0; i < k0.size(); ++i) {
                 k0[i] = n_m.khs[i];
@@ -236,17 +248,19 @@ namespace acstc {
                 { "ordRich", size_t(3) },
                 { "f", T(100) },
                 { "z_r", T(30) },
+                { "z_s", T(100) },
                 { "y_s", T(0) },
-                { "n_layers", size_t(2) },
+                { "n_layers", size_t(1) },
                 { "bottom_layers", { T(500) } },
                 { "bottom_c1s", { T(1700) } },
                 { "bottom_c2s", { T(1700) } },
-                { "bottom_rho", T(2) },
-                { "betas", { T(0), T(0), T(0.5) } },
+                { "bottom_rho", T(1.5) },
+                { "betas", { T(0), T(0.5) } },
                 { "complex_modes", true },
                 { "const_modes", true },
+                { "additive_depth", false },
                 { "past_n", size_t(0) },
-                { "border_width", size_t(100) },
+                { "border_width", size_t(10) },
                 { "bathymetry",
                   { "values",
                     {

@@ -4,18 +4,21 @@
 #include <cstddef>
 #include <iostream>
 #include <algorithm>
-#include "dork.hpp"
 #include "config.hpp"
 #include "solver.hpp"
+#include "io/writer.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/callback.hpp"
-#include "utils/interpolation.hpp"
+#include "utils/verbosity.hpp"
 #include "initial_conditions.hpp"
+#include "utils/interpolation.hpp"
 #include "boost/program_options.hpp"
 
 namespace types = acstc::types;
 namespace po = boost::program_options;
+
+using acstc::utils::verboseln;
 
 template<typename KS, typename PS>
 auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s) {
@@ -27,20 +30,16 @@ auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS
 }
 
 template<typename F>
-auto add_verbosity(const size_t& verbosity, const size_t& report, F& function) {
+auto add_verbosity(const size_t& report, F& function) {
     return [&](auto&& writer) mutable {
-        if (verbosity) {
-            const auto start = std::chrono::system_clock::now();
-            if (report)
-                function(acstc::utils::callbacks(writer, acstc::utils::progress_callback(report)));
-            else
-                function(writer);
-            const auto end = std::chrono::system_clock::now();
-            std::cout << "Elapsed time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
-                << "ms" << std::endl;
-            return;
-        }
-        function(writer);
+        const auto start = std::chrono::system_clock::now();
+        if (report)
+            function(acstc::utils::callbacks(writer, acstc::utils::progress_callback(report)));
+        else
+            function(writer);
+        const auto end = std::chrono::system_clock::now();
+        verboseln(1, "Elapsed time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+        return;
     };
 }
 
@@ -77,7 +76,11 @@ template<typename T, typename F1, typename F2>
 auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& function, F2& function_const) {
     return [&, mn](auto&& callback) mutable {
         if (config.const_modes()) {
+            const auto start = std::chrono::system_clock::now();
             auto [k_j, phi_j] = config.create_const_modes<T>();
+            const auto end = std::chrono::system_clock::now();
+            verboseln(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+
             if (k_j.size() > mn) {
                 k_j.erase_last(k_j.size() - mn);
                 phi_j.erase_last(phi_j.size() - mn);
@@ -85,7 +88,10 @@ auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& 
             function_const(k_j, phi_j, callback);
             return;
         }
+        const auto start = std::chrono::system_clock::now();
         auto [k_j, phi_j] = config.create_modes<T>();
+        const auto end = std::chrono::system_clock::now();
+        verboseln(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
         if (k_j.size() > mn) {
             k_j.erase_last(k_j.size() - mn);
             phi_j.erase_last(phi_j.size() - mn);
@@ -163,11 +169,11 @@ int main(int argc, char* argv[]) {
     positional.add("job_type", 1);
 
     po::options_description generic("Generic options");
-    size_t verbosity, report;
+    size_t report;
     std::string config_filename;
     generic.add_options()
             ("help,h", "Print this message")
-            ("verbosity,v", po::value(&verbosity)->default_value(0), "Verbosity level (0-1)")
+            ("verbosity,v", po::value(&acstc::utils::verbosity::instance().level)->default_value(0), "Verbosity level")
             ("report,r", po::value(&report)->default_value(0)->value_name("k"),
                     "If verbosity level > 0 report every k computed rows (0 = don't report)")
             ("config,c", po::value(&config_filename)->default_value("config.json"), "Config filename");
@@ -213,7 +219,7 @@ int main(int argc, char* argv[]) {
         const auto init = get_initial_conditions(config, k0, phi_s);
 
         auto execute_function = [&](auto&& with_solver) {
-            auto with_verbosity = add_verbosity(verbosity, report, with_solver);
+            auto with_verbosity = add_verbosity(report, with_solver);
             auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
             with_writer();
         };

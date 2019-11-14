@@ -1,19 +1,12 @@
 #pragma once
 #include <cmath>
-#include <array>
-#include <tuple>
 #include <mutex>
 #include <thread>
 #include <cstddef>
 #include <complex>
-#include <utility>
-#include <cstring>
-#include <condition_variable>
 #include "config.hpp"
-#include "io/writer.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
-#include "utils/callback.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {

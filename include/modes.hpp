@@ -97,7 +97,7 @@ namespace acstc {
             static void copy(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
                     const size_t& i, const size_t& j) {
                 for (size_t k = 0; k < std::min(n_m.mattenuation.size(), k_j.size()); ++k) {
-                    k_j[k][i][j] = n_m.mattenuation[k];
+                    k_j[k][i][j] = V(n_m.khs[k], n_m.mattenuation[k]);
                     phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
                 }
             }
@@ -105,7 +105,7 @@ namespace acstc {
             static void copy(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
                              const size_t& i) {
                 for (size_t k = 0; k < std::min(n_m.mattenuation.size(), k_j.size()); ++k) {
-                    k_j[k][i] = n_m.mattenuation[k];
+                    k_j[k][i] = V(n_m.khs[k], n_m.mattenuation[k]);
                     phi_j[k][i] = n_m.mfunctions_zr[k][0];
                 }
             }
@@ -142,30 +142,30 @@ namespace acstc {
 
         modes() = delete;
 
-        static auto create(const config<T>& config) {
-            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data());
+        static auto create(const config<T>& config, const T& z) {
+            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), z);
         }
 
-        static auto create(const config<T>& config,
+        static auto create(const config<T>& config, const T& z,
                 const T& x0, const T& x1, const size_t& nx,
                 const T& y0, const T& y1, const size_t& ny) {
             return _create(config, utils::mesh_1d(x0, x1, nx), utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().field(x0, x1, nx, y0, y1, ny));
+                    config.bathymetry().field(x0, x1, nx, y0, y1, ny), z);
         }
 
-        static auto create(const config<T>& config, const size_t& nx, const size_t& ny) {
+        static auto create(const config<T>& config, const T& z, const size_t& nx, const size_t& ny) {
             const auto [x0, x1, y0, y1] = config.bounds();
-            return create(config, x0, x1, nx, y0, y1, ny);
+            return create(config, z, x0, x1, nx, y0, y1, ny);
         }
 
-        static auto create(const config<T>& config, const T& y0, const T& y1, const size_t& ny) {
+        static auto create(const config<T>& config, const T& z, const T& y0, const T& y1, const size_t& ny) {
             return _create(config, utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny));
+                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny), z);
         }
 
-        static auto create(const config<T>& config, const size_t& ny) {
+        static auto create(const config<T>& config, const T& z, const size_t& ny) {
             const auto [y0, y1] = config.y_bounds();
-            return create(config, y0, y1, ny);
+            return create(config, z, y0, y1, ny);
         }
 
         static auto from_text(std::istream& stream, const size_t count) {
@@ -234,18 +234,23 @@ namespace acstc {
             return const_from_binary(stream);
         }
 
-        static auto calc_modes(const config<T>& config, const T& x, const T& depth) {
+        static auto calc_modes(const config<T>& config, const T& x, const T& depth, const T& z) {
             NormalModes n_m;
             n_m.iModesSubset = config.mode_subset();
             n_m.ppm = static_cast<unsigned int>(config.ppm());
             n_m.ordRich = static_cast<unsigned int>(config.ordRich());
-            n_m.zr.push_back(config.z_r());
+            n_m.zr.push_back(z);
             n_m.f = config.f();
             n_m.M_betas = config.betas();
 
             auto buff = utils::mesh_1d(T(0), depth, config.n_layers() + 1);
             n_m.M_depths.assign(buff.begin() + 1, buff.end());
-            n_m.M_depths.insert(n_m.M_depths.end(), config.bottom_layers().begin(), config.bottom_layers().end());
+            if (config.additive_depth()) {
+                n_m.M_depths.reserve(n_m.M_depths.size() + config.bottom_layers().size());
+                for (const auto& it : config.bottom_layers())
+                    n_m.M_depths.push_back(it + depth);
+            } else
+                n_m.M_depths.insert(n_m.M_depths.end(), config.bottom_layers().begin(), config.bottom_layers().end());
 
             config.hydrology().line(x, T(0), depth, buff);
             n_m.M_c1s.assign(buff.begin(), buff.end() - 1);
@@ -289,7 +294,7 @@ namespace acstc {
     private:
 
         template<typename XV, typename YV, typename DV>
-        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data) {
+        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data, const T& z) {
             types::vector3d_t<V> k_j;
             types::vector3d_t<T> phi_j;
             const auto mm = config.max_mode();
@@ -298,7 +303,7 @@ namespace acstc {
             for (size_t i = 0; i < nx; ++i) {
                 size_t m = 0;
                 for (size_t j = 0; j < ny; ++j)
-                    _fill_data(calc_modes(config, x[i], data[i][j]), k_j, phi_j, nx, ny, i, j, mm, m);
+                    _fill_data(calc_modes(config, x[i], data[i][j], z), k_j, phi_j, nx, ny, i, j, mm, m);
             }
             smooth((y.back() - y.front()) / (y.size() - 1), config.border_width(), k_j, phi_j);
             return std::make_tuple(
@@ -307,14 +312,14 @@ namespace acstc {
         }
 
         template<typename YV, typename DV>
-        static auto _create(const config<T>& config, const YV& y, const DV& data) {
+        static auto _create(const config<T>& config, const YV& y, const DV& data, const T& z) {
             types::vector2d_t<V> k_j;
             types::vector2d_t<T> phi_j;
             const auto mm = config.max_mode();
             const auto ny = y.size();
             size_t m = 0;
             for (size_t i = 0; i < ny; ++i)
-                _fill_data(calc_modes(config, config.x0(), data[i]), k_j, phi_j, ny, i, mm, m);
+                _fill_data(calc_modes(config, config.x0(), data[i], z), k_j, phi_j, ny, i, mm, m);
             return std::make_tuple(
                     utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
                     utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));

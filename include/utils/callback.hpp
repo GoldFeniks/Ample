@@ -3,6 +3,7 @@
 #include <utility>
 #include <iostream>
 #include "types.hpp"
+#include "verbosity.hpp"
 
 namespace acstc {
 
@@ -80,15 +81,25 @@ namespace acstc {
         }
 
         template<typename DCallback>
-        auto progress_callback(const size_t k, DCallback& data_callback) {
-            static auto callback = [](const size_t& n) { std::cout << n << std::endl; };
+        auto progress_callback(const size_t k, const verbosity& verbosity, DCallback& data_callback, const size_t& level = 2) {
+            static auto callback = [&verbosity, level](const size_t& n) { verbosity.verboseln(level, n); };
             return ekc_callback(k, std::forward<DCallback>(data_callback), callback);
         }
 
         template<typename DCallback>
-        auto progress_callback(const size_t k, DCallback&& data_callback) {
+        auto progress_callback(const size_t k, const verbosity& verbosity, DCallback&& data_callback, const size_t& level = 2) {
             return ekc_callback(k, std::forward<DCallback>(data_callback),
-                    [](const size_t& n) { std::cout << n << std::endl; });
+                    [&verbosity, level](const size_t& n) { verbosity.verboseln(level, n); });
+        }
+
+        template<typename DCallback>
+        auto progress_callback(const size_t k, DCallback& data_callback, const size_t& level = 2) {
+            return progress_callback(k, verbosity::instance(), data_callback, level);
+        }
+
+        template<typename DCallback>
+        auto progress_callback(const size_t k, DCallback&& data_callback, const size_t& level = 2) {
+            return progress_callback(k, verbosity::instance(), std::move(data_callback), level);
         }
 
         auto progress_callback(const size_t k) {
@@ -110,37 +121,6 @@ namespace acstc {
                 __impl::caller<sizeof...(Callbacks) - 1>::call(callbacks, data);
             };
         }
-
-        template<typename Callback>
-        static auto callback_factory(Callback& callback) {
-            return [&callback]() { return callbacks(callback); };
-        }
-
-        template<typename Callback>
-        static auto callback_factory(Callback&& callback) {
-            return [callback]() { return callbacks(callback); };
-        }
-
-        template<typename Callback>
-        static auto callback_factory(const size_t k, Callback& callback) {
-            return [k, &callback]() { return ekc_callback(k, callback); };
-        }
-
-        template<typename Callback>
-        static auto callback_factory(const size_t k, Callback&& callback) {
-            return [k, callback]() { return ekc_callback(k, callback); };
-        }
-
-        template<typename Callback>
-        static auto progress_callback_factory(const size_t k, Callback& callback) {
-            return [k, &callback]() { return progress_callback(k, callback); };
-        }
-
-        template<typename Callback>
-        static auto progress_callback_factory(const size_t k, Callback&& callback) {
-            return [k, callback]() { return progress_callback(k, callback); };
-        }
-
 
     }// namespace utils
 
