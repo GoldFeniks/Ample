@@ -1,0 +1,18 @@
+{
+    "f": 150,
+    "ppm": 10,
+    "y0": -3000,
+    "y1": 3000,
+    "ny": 6000,
+    "x1": 10000,
+    "nx": 10000,
+    "z_r": 10,
+    "z_s": 10,
+    "bottom_rho": [2],
+    "bottom_c1s": [1800],
+    "bottom_c2s": [1800],
+    "bathymetry": [
+        "text_file",
+        "bathymetry.txt"
+    ]
+}

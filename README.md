@@ -156,6 +156,6 @@ pN0K ... pNMK
   }
 ]
 ```
-For `x`-independent modes "y" can be omitted, "k" and "phi" are two-dimensional.
+For `x`-independent modes `"y"` can be omitted, `"k"` and `"phi"` are two-dimensional.
 ## Output file
-Similar to [modes](https://github.com/GoldFeniks/Acoustic#modes) output file consists of two integer values (number of points over `x` and `y` coordinates) followed by respective points specifications. The rest of the file contains `NM` pairs of real values — WAMPE solution.
+Similar to [modes](https://github.com/GoldFeniks/Acoustic#modes) output file consists of two integer values `N` and `M` (number of points over `x` and `y` coordinates) followed by two real-valued sequences of length `N` and `M` respectively — points specifications. The rest of the file contains `NM` pairs of real values — WAMPE solution.
