@@ -3,6 +3,7 @@
 #include <string>
 #include <cstddef>
 #include <fstream>
+#include <filesystem>
 #include "modes.hpp"
 #include "series.hpp"
 #include "hydrology.hpp"
@@ -20,7 +21,7 @@ namespace acstc {
         template<typename T, typename V>
         struct modes_creator {
 
-            static auto create(const json& data, const size_t count) {
+            static auto create(const json& data, const size_t count, const std::filesystem::path& path) {
                 const auto type = data[0].template get<std::string>();
                 if (type == "values") {
                     const auto x = data["/1/x"_json_pointer].template get<types::vector1d_t<T>>();
@@ -38,13 +39,13 @@ namespace acstc {
                             utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_data)));
                 }
                 if (type == "text_file")
-                    return ::acstc::modes<T, V>::from_text(std::ifstream(data[1].template get<std::string>()), count);
+                    return ::acstc::modes<T, V>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())), count);
                 if (type == "binary_file")
-                    return ::acstc::modes<T, V>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary), count);
+                    return ::acstc::modes<T, V>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary), count);
                 throw std::logic_error("Unknown modes type: " + type);
             }
 
-            static auto create_const(const json& data) {
+            static auto create_const(const json& data, const std::filesystem::path& path) {
                 const auto type = data[0].template get<std::string>();
                 if (type == "values") {
                     const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
@@ -59,9 +60,9 @@ namespace acstc {
                                     data["/1/phi"_json_pointer].template get<types::vector2d_t<T>>()));
                 }
                 if (type == "text_file")
-                    return ::acstc::modes<T, V>::const_from_text(std::ifstream(data[1].template get<std::string>()));
+                    return ::acstc::modes<T, V>::const_from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
                 if (type == "binary_file")
-                    return ::acstc::modes<T, V>::const_from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+                    return ::acstc::modes<T, V>::const_from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
                 throw std::logic_error("Unknown modes type: " + type);
             }
 
@@ -70,7 +71,7 @@ namespace acstc {
         template<typename T>
         struct modes_creator<T, T> {
 
-            static auto create(const json& data, const size_t count) {
+            static auto create(const json& data, const size_t count, const std::filesystem::path& path) {
                 const auto type = data[0].template get<std::string>();
                 if (type == "values") {
                     const auto x = data["/1/x"_json_pointer].template get<types::vector1d_t<T>>();
@@ -83,13 +84,13 @@ namespace acstc {
                             utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_data)));
                 }
                 if (type == "text_file")
-                    return ::acstc::modes<T, T>::from_text(std::ifstream(data[1].template get<std::string>()), count);
+                    return ::acstc::modes<T, T>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())), count);
                 if (type == "binary_file")
-                    return ::acstc::modes<T, T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary), count);
+                    return ::acstc::modes<T, T>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary), count);
                 throw std::logic_error("Unknown modes type: " + type);
             }
 
-            static auto create_const(const json& data) {
+            static auto create_const(const json& data, const std::filesystem::path& path) {
                 const auto type = data[0].template get<std::string>();
                 if (type == "values") {
                     const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
@@ -100,9 +101,9 @@ namespace acstc {
                                     data["/1/phi"_json_pointer].template get<types::vector2d_t<T>>()));
                 }
                 if (type == "text_file")
-                    return ::acstc::modes<T, T>::const_from_text(std::ifstream(data[1].template get<std::string>()));
+                    return ::acstc::modes<T, T>::const_from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
                 if (type == "binary_file")
-                    return ::acstc::modes<T, T>::const_from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+                    return ::acstc::modes<T, T>::const_from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
                 throw std::logic_error("Unknown modes type: " + type);
             }
 
@@ -120,19 +121,20 @@ namespace acstc {
 
         config() :
             _data(_default_data()),
-            _bathymetry(_create_bathymetry(_data["bathymetry"])),
-            _hydrology(_create_hydrology(_data["hydrology"]))
+            _bathymetry(_create_bathymetry(_data["bathymetry"], "")),
+            _hydrology(_create_hydrology(_data["hydrology"], ""))
         {
             _fill_coefficients(_data["coefficients"]);
         }
 
         explicit config(const std::string& filename) : _data(_default_data()) {
+            _path = filename;
             std::ifstream in(filename);
             json data;
             in >> data;
             _data.merge_patch(data);
-            _bathymetry = _create_bathymetry(_data["bathymetry"]);
-            _hydrology = _create_hydrology(_data["hydrology"]);
+            _bathymetry = _create_bathymetry(_data["bathymetry"], _path);
+            _hydrology = _create_hydrology(_data["hydrology"], _path);
             _fill_coefficients(_data["coefficients"]);
         }
 
@@ -196,7 +198,7 @@ namespace acstc {
         template<typename V = T>
         auto create_modes(const T& z) const {
             if (_data.count("modes"))
-                return __impl::modes_creator<T, V>::create(_data["modes"], border_width());
+                return __impl::modes_creator<T, V>::create(_data["modes"], border_width(), _path);
             if (_data.count("mnx") && _data.count("mny"))
                 return ::acstc::modes<T, V>::create(*this, z, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>());
             return ::acstc::modes<T, V>::create(*this, z);
@@ -210,7 +212,7 @@ namespace acstc {
         template<typename V = T>
         auto create_const_modes(const T& z) const {
             if (_data.count("modes"))
-                return __impl::modes_creator<T, V>::create_const(_data["modes"]);
+                return __impl::modes_creator<T, V>::create_const(_data["modes"], _path);
             if (_data.count("mny"))
                 return ::acstc::modes<T, V>::create(*this, z, _data["mny"].template get<size_t>());
             return ::acstc::modes<T, V>::create(*this, z, bathymetry().y().size());
@@ -237,6 +239,7 @@ namespace acstc {
 
         json _data;
         T _a, _b, _c;
+        std::filesystem::path _path;
         utils::linear_interpolated_data_2d<T> _bathymetry;
         utils::delaunay_interpolated_data_2d<T> _hydrology;
 
@@ -299,7 +302,7 @@ namespace acstc {
             };
         }
 
-        static auto _create_hydrology(const json& data) {
+        static auto _create_hydrology(const json& data, const std::filesystem::path& path) {
             const auto type = data[0].template get<std::string>();
             if (type == "values")
                 return ::acstc::hydrology<T>::from_table(
@@ -307,13 +310,13 @@ namespace acstc {
                         data["/1/z"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
             if (type == "text_file")
-                return ::acstc::hydrology<T>::from_text(std::ifstream(data[1].template get<std::string>()));
+                return ::acstc::hydrology<T>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
             if (type == "binary_file")
-                return ::acstc::hydrology<T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+                return ::acstc::hydrology<T>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
             throw std::logic_error("Unknown hydrology type: " + type);
         }
 
-        static auto _create_bathymetry(const json& data) {
+        static auto _create_bathymetry(const json& data, const std::filesystem::path& path) {
             const auto type = data[0].template get<std::string>();
             if (type == "values")
                 return ::acstc::bathymetry<T>::from_table(
@@ -321,9 +324,9 @@ namespace acstc {
                         data["/1/y"_json_pointer].template get<types::vector1d_t<T>>(),
                         data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
             if (type == "text_file")
-                return ::acstc::bathymetry<T>::from_text(std::ifstream(data[1].template get<std::string>()));
+                return ::acstc::bathymetry<T>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
             if (type == "binary_file")
-                return ::acstc::bathymetry<T>::from_binary(std::ifstream(data[1].template get<std::string>(), std::ios::binary));
+                return ::acstc::bathymetry<T>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
             throw std::logic_error("Unknown bathymetry type: " + type);
         }
 

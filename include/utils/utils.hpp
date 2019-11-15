@@ -1,8 +1,10 @@
 #pragma once
 #include <tuple>
+#include <string>
 #include <cstddef>
 #include <iterator>
 #include <algorithm>
+#include <filesystem>
 #include "types.hpp"
 
 namespace acstc {
@@ -124,6 +126,13 @@ namespace acstc {
             for (size_t i = 0; i < n; ++i)
                 result.emplace_back(a + i * h);
             return result;
+        }
+
+        std::filesystem::path make_file_path(const std::filesystem::path root, const std::filesystem::path& filename) {
+            if (!root.has_filename() || filename.is_absolute())
+                return filename;
+            std::filesystem::path result = root;
+            return result.replace_filename(filename);
         }
 
     }// namespace utils
