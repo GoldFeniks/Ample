@@ -259,7 +259,7 @@ namespace acstc {
             n_m.M_c2s.insert(n_m.M_c2s.end(), config.bottom_c2s().begin(), config.bottom_c2s().end());
 
             n_m.M_rhos.resize(config.n_layers(), T(1));
-            n_m.M_rhos.resize(n_m.M_depths.size(), config.bottom_rho());
+            n_m.M_rhos.insert(n_m.M_rhos.end(), config.bottom_rhos().begin(), config.bottom_rhos().end());
 
             n_m.M_Ns_points.resize(n_m.M_depths.size());
             n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(round(n_m.ppm * n_m.M_depths[0])));

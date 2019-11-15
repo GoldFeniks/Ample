@@ -151,7 +151,7 @@ namespace acstc {
         CONFIG_DATA_FIELD(z_r, T)
         CONFIG_DATA_FIELD(y_s, T)
         CONFIG_DATA_FIELD(n_layers, size_t)
-        CONFIG_DATA_FIELD(bottom_rho, T)
+        CONFIG_DATA_FIELD(bottom_rhos, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(betas, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(bottom_layers, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(bottom_c1s, types::vector1d_t<T>)
@@ -254,7 +254,7 @@ namespace acstc {
                 { "bottom_layers", { T(500) } },
                 { "bottom_c1s", { T(1700) } },
                 { "bottom_c2s", { T(1700) } },
-                { "bottom_rho", T(1.5) },
+                { "bottom_rhos", { T(1.5) } },
                 { "betas", { T(0), T(0.5) } },
                 { "complex_modes", true },
                 { "const_modes", true },

@@ -41,7 +41,6 @@ Configuration is a file in JSON format containing any of the following fields.
 * `"z_s"` Source depth.
 * `"z_r"` Receiver depth.
 * `"y_s"` `y` coordinate of the source.
-* `"bottom_rho"` Bottom layers density.
 ### Integer fields
 * `"max_mode"` Maximum number of modes to use.
 * `"nx", "ny"` Number of points over `x` and `y` coordinates.
@@ -58,6 +57,7 @@ Configuration is a file in JSON format containing any of the following fields.
 ### Array fields
 * `"betas"` Attenuation coeffitients for all layers.
 * `"bottom_layers"` Depths of bottom layers.
+* `"bottom_rhos"` Density of bottom layers.
 * `"bottom_c1s", "bottom_c2s"` Sound speed at the top and bottom of each bottom layer.
 * `"k0", "phi_s"` Wavenumbers and modal functions of the source.
 ### Bathymetry
