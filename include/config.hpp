@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <fstream>
 #include <filesystem>
+#include <unordered_map>
 #include "modes.hpp"
 #include "series.hpp"
 #include "hydrology.hpp"
@@ -111,7 +112,12 @@ namespace acstc {
 
     }// namespace __impl;
 
-#define CONFIG_DATA_FIELD(field, type) const type& field () const { static const auto res = _data[#field].template get<type>(); return res; }
+#define CONFIG_DATA_FIELD(field, type) const type& field () const {                      \
+        if (!_cache.count(#field))                                                       \
+            _cache[#field] = new data_field<type>(_data[#field].template get<type>());   \
+        return _cache[#field]->template cast<type>().value;                              \
+    }
+
 #define CONFIG_FIELD(field) const auto& field () const { return _##field; }
 
     template<typename T = types::real_t>
@@ -136,6 +142,11 @@ namespace acstc {
             _bathymetry = _create_bathymetry(_data["bathymetry"], _path);
             _hydrology = _create_hydrology(_data["hydrology"], _path);
             _fill_coefficients(_data["coefficients"]);
+        }
+
+        ~config() {
+            for (const auto& [key, value] : _cache)
+                delete value;
         }
 
         CONFIG_DATA_FIELD(mode_subset, double)
@@ -237,11 +248,36 @@ namespace acstc {
 
     private:
 
+        template<typename>
+        class data_field;
+
+        struct data_field_base {
+
+            template<typename C>
+            const data_field<C>& cast() const {
+                return *static_cast<const data_field<C>*>(this);
+            }
+
+        };
+
+        template<typename C>
+        class data_field : public data_field_base {
+
+        public:
+
+            const C value;
+
+            data_field(const C& value) : value(value) {}
+            data_field(C&& value) : value(std::move(value)) {}
+
+        };
+
         json _data;
         T _a, _b, _c;
         std::filesystem::path _path;
         utils::linear_interpolated_data_2d<T> _bathymetry;
         utils::delaunay_interpolated_data_2d<T> _hydrology;
+        mutable std::unordered_map<std::string, data_field_base*> _cache;
 
         static json _default_data() {
             return {
