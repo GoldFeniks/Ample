@@ -38,6 +38,58 @@ namespace acstc {
 
             };
 
+            template<typename It>
+            class stride_iterator {
+
+            public:
+
+                explicit stride_iterator(It begin, It end, const size_t& k) : _it(begin), _end(end), _k(k) {}
+
+                bool operator==(const stride_iterator& other) const {
+                    return _it == other._it;
+                }
+
+                bool operator!=(const stride_iterator& other) const {
+                    return !(*this == other);
+                }
+
+                bool operator==(const It& other) const {
+                    return _it == other;
+                }
+
+                bool operator!=(const It& other) const {
+                    return !(*this == other);
+                }
+
+                const auto& operator*() const {
+                    return *_it;
+                }
+
+                stride_iterator& operator++() {
+                    advance();
+                    return *this;
+                }
+
+                const stride_iterator operator++(int) {
+                    auto res = stride_iterator(_it, _end, _k);
+                    advance();
+                    return res;
+                }
+
+             private:
+
+                void advance() {
+                    if (std::distance(_it, _end) < _k)
+                        _it = _end;
+                    else
+                        _it += _k;
+                }
+
+                It _it, _end;
+                const size_t _k;
+
+            };
+
         }// namespace __impl
 
         template<typename... T>
@@ -89,13 +141,15 @@ namespace acstc {
                     return _owner[_index];
                 }
 
-                auto operator++() {
+                iterator& operator++() {
                     ++_index;
                     return *this;
                 }
 
-                auto operator++(int) {
-                    return iterator(_owner, _index++);
+                iterator operator++(int) {
+                    auto res = iterator(_owner, _index);
+                    ++_index;
+                    return res;
                 }
 
             private:
@@ -133,6 +187,14 @@ namespace acstc {
                 return filename;
             std::filesystem::path result = root;
             return result.replace_filename(filename);
+        }
+
+        template<typename It>
+        auto stride(It begin, It end, const size_t& k) {
+            return std::make_tuple(
+                __impl::stride_iterator(begin, end, k),
+                __impl::stride_iterator(end,   end, k)
+            );
         }
 
     }// namespace utils

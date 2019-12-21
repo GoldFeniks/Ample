@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <tuple>
 #include <string>
 #include <cstddef>
@@ -176,6 +177,12 @@ namespace acstc {
         CONFIG_DATA_FIELD(border_width, size_t)
         CONFIG_DATA_FIELD(k0, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(phi_s, types::vector1d_t<T>)
+        CONFIG_DATA_FIELD(a0, T)
+        CONFIG_DATA_FIELD(a1, T)
+        CONFIG_DATA_FIELD(na, size_t)
+        CONFIG_DATA_FIELD(l0, T)
+        CONFIG_DATA_FIELD(l1, T)
+        CONFIG_DATA_FIELD(nl, size_t)
 
         CONFIG_FIELD(data)
         CONFIG_FIELD(a)
@@ -335,6 +342,12 @@ namespace acstc {
                 { "y1",  T(4000) },
                 { "ny", size_t(8001) },
                 { "coefficients", { "pade" } },
+                { "a0", -T(M_PI) / T(4) },
+                { "a1",  T(M_PI) / T(4) },
+                { "na", size_t(90) },
+                { "l0", T(0) },
+                { "l1", T(4000) },
+                { "nl", size_t(4001) }
             };
         }
 

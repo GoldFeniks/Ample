@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <iostream>
 #include <algorithm>
+#include "rays.hpp"
 #include "config.hpp"
 #include "solver.hpp"
 #include "io/writer.hpp"
@@ -145,23 +146,65 @@ void save_modes(const acstc::config<types::real_t>& config, const std::string& f
     const auto& xs = k_j.template get<0>();
     const auto& ys = k_j.template get<1>();
     if (binary) {
-            const auto nx = static_cast<const uint32_t>(xs.size());
-            const auto ny = static_cast<const uint32_t>(ys.size());
-            const auto nm = static_cast<const uint32_t>(k_j.size());
-            acstc::utils::binary_writer<types::real_t> writer(filename);
-            writer.stream().write(reinterpret_cast<const char*>(&nx), sizeof(nx));
-            writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
-            writer.stream().write(reinterpret_cast<const char*>(&nm), sizeof(nm));
-            writer.write(xs);
-            writer.write(ys);
-            write_modes(k_j, phi_j, writer, wrapper);
-            return;
-        }
+        const auto nx = static_cast<const uint32_t>(xs.size());
+        const auto ny = static_cast<const uint32_t>(ys.size());
+        const auto nm = static_cast<const uint32_t>(k_j.size());
+        acstc::utils::binary_writer<types::real_t> writer(filename);
+        writer.stream().write(reinterpret_cast<const char*>(&nx), sizeof(nx));
+        writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
+        writer.stream().write(reinterpret_cast<const char*>(&nm), sizeof(nm));
+        writer.write(xs);
+        writer.write(ys);
+        write_modes(k_j, phi_j, writer, wrapper);
+        return;
+    }
     acstc::utils::text_writer<types::real_t> writer(filename);
     writer.stream() << xs.size() << ' ' << ys.size() << ' ' << k_j.size() << '\n';
     writer.write(xs);
     writer.write(ys);
     write_modes(k_j, phi_j, writer, wrapper);
+}
+
+template<typename V, typename W>
+void write_strided(const V& v, const size_t& k, W& writer) {
+    auto [begin, end] = acstc::utils::stride(v.begin(), v.end(), k);
+    writer.write(begin, end);
+}
+
+template<typename XS, typename YS, typename RX, typename RY, typename W>
+void write_rays(const XS& xs, const YS& ys, const RX& rx, const RY& ry, const size_t& n, const size_t& k, W& writer) {
+    writer.write(xs);
+    write_strided(ys, k, writer);
+    for (size_t i = 0; i < n; ++i)
+        for (const auto& [x, y] : acstc::utils::zip(rx[i].data(), ry[i].data())) {
+            write_strided(x, k, writer);
+            write_strided(y, k, writer);
+        }
+}
+
+template<typename KJ>
+void save_rays(const acstc::config<types::real_t>& config, const std::string& filename, const bool binary, const KJ& k_j, const size_t& k) {
+    const auto na = config.na();
+    const auto nl = config.nl();
+    const auto nm = k_j.size();
+
+    const auto [rx, ry] = acstc::rays::compute(
+        config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j);
+
+    const auto& as = rx.template get<0>();
+    const auto& ls = rx.template get<1>();
+    const auto cl = nl / k;
+    if (binary) {
+        acstc::utils::binary_writer<types::real_t> writer(filename);
+        writer.stream().write(reinterpret_cast<const char*>(&na), sizeof(na));
+        writer.stream().write(reinterpret_cast<const char*>(&cl), sizeof(cl));
+        writer.stream().write(reinterpret_cast<const char*>(&nm), sizeof(nm));
+        write_rays(as, ls, rx, ry, nm, k, writer);
+        return;
+    }
+    acstc::utils::text_writer<types::real_t> writer(filename);
+    writer.stream() << as.size() << ' ' << cl << ' ' << nm << '\n';
+    write_rays(as, ls, rx, ry, nm, k, writer);
 }
 
 int main(int argc, char* argv[]) {
@@ -238,6 +281,7 @@ int main(int argc, char* argv[]) {
             execute_function(add_modes<types::real_t>(config, k0.size(), with_solver, with_solver_const));
         return 0;
     }
+    
     if (job_type == "modes") {
         if (config.complex_modes())
             save_modes<types::complex_t>(config, output_filename, vm.count("binary") > 0,
@@ -249,6 +293,17 @@ int main(int argc, char* argv[]) {
         else
             save_modes<types::real_t>(config, output_filename, vm.count("binary") > 0,
                     [](auto& writer) { return [&](const auto& data) { writer(data); }; });
+        return 0;
+    }
+
+    if (job_type == "rays") {
+        if (config.const_modes()) {
+            const auto [k_j, phi_j] = config.create_const_modes<types::real_t>();
+            save_rays(config, output_filename, vm.count("binary") > 0, k_j, step);
+        } else {
+            const auto [k_j, phi_j] = config.create_modes<types::real_t>();
+            save_rays(config, output_filename, vm.count("binary") > 0, k_j, step);
+        }
         return 0;
     }
     throw std::logic_error(std::string("Unknown job type: ") + job_type);

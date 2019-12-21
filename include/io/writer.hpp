@@ -120,8 +120,10 @@ namespace acstc {
             template<typename It>
             void write(It begin, It end) {
                 this->before_write();
-                while (begin != end)
-                    this->write_one(*(begin++));
+                while (begin != end) {
+                    this->write_one(*begin);
+                    ++begin;
+                }
                 this->after_write();
             }
 
@@ -147,6 +149,11 @@ namespace acstc {
             template<typename V, typename = std::enable_if_t<!std::is_same_v<T, V>>>
             void operator()(const V& data) {
                 write(data);
+            }
+
+            template<typename It>
+            void operator()(It begin, It end) {
+                write<It>(std::move(begin), std::move(end));
             }
 
         };
