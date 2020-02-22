@@ -22,12 +22,95 @@ namespace po = boost::program_options;
 using acstc::utils::verboseln;
 
 template<typename KS, typename PS>
-auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s) {
+auto get_ray_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s,
+    const acstc::utils::linear_interpolated_data_1d<types::real_t>& k_j) {
+    return acstc::ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 0., config.y_s(), config.l1(), config.nl(),
+            config.a0(), config.a1(), config.na(), k0, phi_s, k_j);
+}
+
+template<typename KS, typename PS>
+auto get_ray_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s) {
+    auto [k_j, phi_j] = config.create_const_modes<types::real_t>();
+
+    if (k_j.size() > k0.size())
+        k_j.erase_last(k_j.size() - k0.size());
+
+    return get_ray_initial_conditions(config, k0, phi_s, phi_j);
+}
+
+template<typename KS, typename PS>
+auto get_ray_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s,
+    const acstc::utils::linear_interpolated_data_1d<types::real_t, types::complex_t>& k_j) {
+    const auto& ys = k_j.template get<0>();
+    types::vector2d_t<types::real_t> new_k_j(k_j.size(), types::vector1d_t<types::real_t>(ys.size()));
+
+    for (size_t j = 0; j < k_j.size(); ++j)
+        std::transform(k_j[j].data().begin(), k_j[j].data().end(), new_k_j[j].begin(), [](const auto& v) { return v.real(); });
+
+    return get_ray_initial_conditions(config, k0, phi_s, acstc::utils::linear_interpolated_data_1d<types::real_t>(ys, new_k_j));
+}
+
+template<typename KS, typename PS>
+auto get_ray_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s,
+    const acstc::utils::linear_interpolated_data_2d<types::real_t>& k_j) {
+    types::vector2d_t<types::real_t> new_k_j;
+    new_k_j.reserve(k_j.size());
+
+    for (size_t j = 0; j < k_j.size(); ++j)
+        new_k_j.emplace_back(k_j[j][0].begin(), k_j[j][0].end());
+
+    return get_ray_initial_conditions(config, k0, phi_s, 
+        acstc::utils::linear_interpolated_data_1d<types::real_t>(k_j.template get<1>(), new_k_j));
+}
+
+template<typename KS, typename PS>
+auto get_ray_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s,
+    const acstc::utils::linear_interpolated_data_2d<types::real_t, types::complex_t>& k_j) {
+    const auto& ys = k_j.template get<1>();
+    types::vector2d_t<types::real_t> new_k_j(k_j.size(), types::vector1d_t<types::real_t>(ys.size()));
+
+    for (size_t j = 0; j < k_j.size(); ++j)
+        std::transform(k_j[j][0].begin(), k_j[j][0].end(), new_k_j[j].begin(), [](const auto& v) { return v.real(); });
+
+    return get_ray_initial_conditions(config, k0, phi_s, acstc::utils::linear_interpolated_data_1d<types::real_t>(ys, new_k_j));
+}
+
+template<typename KS, typename PS>
+auto get_simple_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s) {
+    const auto init = config.init();
+
     KS ws(k0.size());
     PS as(phi_s.size());
     std::transform(phi_s.begin(), phi_s.end(), as.begin(), [](const auto& phi) { return phi / (2 * std::sqrt(M_PI)); });
     std::transform(k0.begin(), k0.end(), ws.begin(), [](const auto& k0) { return 1 / std::pow(k0, 2); } );
-    return acstc::greene_source<types::real_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
+
+    if (init == "green")
+        return acstc::greene_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
+
+    if (init == "gauss")
+        return acstc::gaussian_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
+
+    throw new std::logic_error(std::string("Unknown initial conditions type: ") + init);
+}
+
+template<typename KS, typename PS, typename KJ>
+auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s, const KJ& k_j) {
+    const auto init = config.init();
+
+    if (init == "ray")
+        return get_ray_initial_conditions(config, k0, phi_s, k_j);
+
+    return get_simple_initial_conditions(config, k0, phi_s);
+}
+
+template<typename KS, typename PS>
+auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s) {
+    const auto init = config.init();
+
+    if (init == "ray")
+        return get_ray_initial_conditions(config, k0, phi_s);
+
+    return get_simple_initial_conditions(config, k0, phi_s);
 }
 
 template<typename F>
@@ -98,6 +181,13 @@ auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& 
             phi_j.erase_last(phi_j.size() - mn);
         }
         function(k_j, phi_j, callback);
+    };
+}
+
+template<typename KS, typename PS, typename F>
+auto add_initial_conditions(const acstc::config<types::real_t>& config, const KS& k0, const PS& phi_s, F& function) {
+    return [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+        function(get_initial_conditions(config, k0, phi_s, k_j), k_j, phi_j, callback);
     };
 }
 
@@ -207,6 +297,12 @@ void save_rays(const acstc::config<types::real_t>& config, const std::string& fi
     write_rays(as, ls, rx, ry, nm, k, writer);
 }
 
+template<typename V, typename W>
+void write_conditions(const V& values, const size_t& size, W& writer) {
+    for (const auto& it : values)
+        writer.write(reinterpret_cast<const types::real_t*>(it.data()), 2 * size);
+}
+
 int main(int argc, char* argv[]) {
     po::positional_options_description positional;
     positional.add("job_type", 1);
@@ -259,26 +355,27 @@ int main(int argc, char* argv[]) {
 
         const auto [k0, phi_s] = config.create_source_modes();
 
-        const auto init = get_initial_conditions(config, k0, phi_s);
-
         auto execute_function = [&](auto&& with_solver) {
             auto with_verbosity = add_verbosity(report, with_solver);
             auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
             with_writer();
         };
 
-        auto with_solver = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+        auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
             solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
         };
 
-        auto with_solver_const = [&](const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+        auto with_solver_const = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
             solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
         };
 
+        auto with_initial_conditions = add_initial_conditions(config, k0, phi_s, with_solver);
+        auto with_initial_conditions_const = add_initial_conditions(config, k0, phi_s, with_solver_const);
+
         if (config.complex_modes())
-            execute_function(add_modes<types::complex_t>(config, k0.size(), with_solver, with_solver_const));
+            execute_function(add_modes<types::complex_t>(config, k0.size(), with_initial_conditions, with_initial_conditions_const));
         else
-            execute_function(add_modes<types::real_t>(config, k0.size(), with_solver, with_solver_const));
+            execute_function(add_modes<types::real_t>(config, k0.size(), with_initial_conditions, with_initial_conditions_const));
         return 0;
     }
     
@@ -304,6 +401,36 @@ int main(int argc, char* argv[]) {
             const auto [k_j, phi_j] = config.create_modes<types::real_t>();
             save_rays(config, output_filename, vm.count("binary") > 0, k_j, step);
         }
+
+        return 0;
+    }
+
+    if (job_type == "init") {
+        const auto [k0, phi_s] = config.create_source_modes();
+        const auto init = get_initial_conditions(config, k0, phi_s);
+
+        const auto nj = k0.size();
+        const auto ny = config.ny();
+
+        const auto ys = acstc::utils::mesh_1d(config.y0(), config.y1(), ny);
+
+        if (vm.count("binary") > 0) {
+            acstc::utils::binary_writer<types::real_t> writer(output_filename);
+
+            writer.stream().write(reinterpret_cast<const char*>(&nj), sizeof(nj));
+            writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
+            writer.write(ys);
+            write_conditions(init, ny, writer);
+
+            return 0;
+        }
+
+        acstc::utils::text_writer<types::real_t> writer(output_filename);
+
+        writer.stream() << nj << ' ' << ny << '\n';
+        writer.write(ys);
+        write_conditions(init, ny, writer);
+
         return 0;
     }
     throw std::logic_error(std::string("Unknown job type: ") + job_type);

@@ -41,6 +41,29 @@ namespace acstc {
             }
 
             template<typename T, typename V>
+            auto calc_derivative_x(const acstc::utils::linear_interpolated_data_2d<T, V>& values) {
+                const auto& x = values.template get<0>();
+                const auto& y = values.template get<1>();
+                types::vector3d_t<V> resx(values.size());
+                for (size_t j = 0; j < values.size(); ++j) {
+                    const auto& data = values[j].data();
+                    resx[j].resize(x.size(), types::vector1d_t<V>(y.size()));
+                    for (size_t i = 1; i < x.size() - 1; ++i) {
+                        resx[j][i][0] = (data[i + 1][0] - data[i - 1][0]) / (x[i + 1] - x[i - 1]);
+                        resx[j][i].back() = (data[i + 1].back() - data[i - 1].back()) / (x[i + 1] - x[i - 1]);
+                        for (size_t k = 1; k < y.size() - 1; ++k)
+                            resx[j][i][k] = (data[i + 1][k] - data[i - 1][k]) / (x[i + 1] - x[i - 1]);
+                    }
+                    for (size_t i = 0; i < y.size(); ++i) {
+                        resx[j][0][i] = calc_derivative_forward(data[0][i], data[1][i], data[2][i], x[0], x[1], x[2]);
+                        resx[j].back()[i] = calc_derivative_backward(data[x.size() - 3][i], data[x.size() - 2][i], data.back()[i],
+                                x[x.size() - 3], x[x.size() - 2], x.back());
+                    }
+                }
+                return utils::linear_interpolated_data_2d<T, V>(x, y, resx);
+            }
+
+            template<typename T, typename V>
             auto calc_derivatives(const acstc::utils::linear_interpolated_data_2d<T, V>& values) {
                 const auto& x = values.template get<0>();
                 const auto& y = values.template get<1>();

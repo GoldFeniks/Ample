@@ -183,6 +183,7 @@ namespace acstc {
         CONFIG_DATA_FIELD(l0, T)
         CONFIG_DATA_FIELD(l1, T)
         CONFIG_DATA_FIELD(nl, size_t)
+        CONFIG_DATA_FIELD(init, std::string)
 
         CONFIG_FIELD(data)
         CONFIG_FIELD(a)
@@ -347,7 +348,8 @@ namespace acstc {
                 { "na", size_t(90) },
                 { "l0", T(0) },
                 { "l1", T(4000) },
-                { "nl", size_t(4001) }
+                { "nl", size_t(4001) },
+                { "init", "green" }
             };
         }
 

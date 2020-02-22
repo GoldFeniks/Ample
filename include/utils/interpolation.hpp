@@ -48,22 +48,28 @@ namespace acstc {
                     return line_point(line_point(a, b, y0, y1, y), line_point(c, d, y0, y1, y), x0, x1, x);
                 }
 
-                template<typename T, typename C, typename V, typename RV>
-                static auto line(const T& a, const T& b, const C& coords, const V& values, RV& res) {
+                template<typename T, typename C, typename V, typename It>
+                static void line(const T& a, const T& b, const C& coords, const V& values, It begin, const It& end) {
                     size_t i = 1;
-                    const auto h = (b - a) / (res.size() - 1);
-                    for (size_t j = 0; j < res.size(); ++j) {
+                    const auto n = std::distance(begin, end);
+                    const auto h = (b - a) / (n - 1);
+                    for (size_t j = 0; j < n; ++j, ++begin) {
                         const auto c = a + j * h;
                         while (c > coords[i] && i < coords.size() - 1)
                             ++i;
-                        res[j] = values[i - 1] + (values[i] - values[i - 1]) * (c - coords[i - 1]) / (coords[i] - coords[i - 1]);
+                        *begin = values[i - 1] + (values[i] - values[i - 1]) * (c - coords[i - 1]) / (coords[i] - coords[i - 1]);
                     }
+                }
+
+                template<typename T, typename C, typename V, typename RV>
+                static void line(const T& a, const T& b, const C& coords, const V& values, RV& res) {
+                    line(a, b, coords, values, res.begin(), res.end());
                 }
 
                 template<typename T, typename C, typename V>
                 static auto line(const T& a, const T& b, const size_t n, const C& coords, const V& values) {
                     types::vector1d_t<std::decay_t<decltype(values[0])>> res(n);
-                    line(a, b, coords, values, res);
+                    line(a, b, coords, values, res.begin(), res.end());
                     return res;
                 }
 
@@ -281,7 +287,7 @@ namespace acstc {
             };
 
             template<typename T, typename V = T>
-            class linear_interpolator_1d : interpolator_1d<T, V> {
+            class linear_interpolator_1d : public interpolator_1d<T, V> {
 
             public:
 
@@ -296,7 +302,7 @@ namespace acstc {
 
                 V point(const T& x) const override {
                     const auto& xs = this->x();
-                    const auto [ix, jx] = utils::find_indices(xs, x);
+                    const auto [ix, jx] = find_indices(xs, x);
                     return __impl::linear_interpolation::line_point(
                             _data[ix], _data[jx], xs[ix], xs[jx], x);
                 }
@@ -327,6 +333,10 @@ namespace acstc {
                     return _data;
                 }
 
+                const auto& operator[](const size_t& i) const {
+                    return _data[i];
+                }
+
             protected:
 
                 data_t _data;
@@ -340,7 +350,7 @@ namespace acstc {
             };
 
             template<typename T, typename V = T>
-            class linear_interpolator_2d : interpolator_2d<T, V> {
+            class linear_interpolator_2d : public interpolator_2d<T, V> {
 
             public:
 
@@ -357,8 +367,8 @@ namespace acstc {
                 V point(const T& x, const T& y) const override {
                     const auto& xs = this->x();
                     const auto& ys = this->y();
-                    const auto [ix, jx] = utils::find_indices(xs, x);
-                    const auto [iy, jy] = utils::find_indices(ys, y);
+                    const auto [ix, jx] = find_indices(xs, x);
+                    const auto [iy, jy] = find_indices(ys, y);
                     return __impl::linear_interpolation::field_point(
                             _data[ix][iy], _data[ix][jy], _data[jx][iy], _data[jx][jy],
                             xs[ix], xs[jx], ys[iy], ys[jy], x, y);
@@ -412,6 +422,10 @@ namespace acstc {
                     return _data;
                 }
 
+                const auto& operator[](const size_t& i) const {
+                    return _data[i];
+                }
+
             protected:
 
                 data_t _data;
@@ -425,7 +439,7 @@ namespace acstc {
             };
 
             template<typename T, typename V = T>
-            class delaunay_interpolator_2d : interpolator_2d<T, V> {
+            class delaunay_interpolator_2d : public interpolator_2d<T, V> {
 
             public:
 
