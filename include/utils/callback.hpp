@@ -4,6 +4,7 @@
 #include <iostream>
 #include "types.hpp"
 #include "verbosity.hpp"
+#include "progress_bar.hpp"
 
 namespace acstc {
 
@@ -107,7 +108,7 @@ namespace acstc {
         }
 
         template<typename... Callbacks>
-        static auto callbacks(Callbacks&... callbacks) {
+        auto callbacks(Callbacks&... callbacks) {
             return [callbacks=std::tie(std::forward<Callbacks>(callbacks)...)]
                     (const auto& data) mutable {
                 __impl::caller<sizeof...(Callbacks) - 1>::call(callbacks, data);
@@ -115,10 +116,16 @@ namespace acstc {
         }
 
         template<typename... Callbacks>
-        static auto callbacks(Callbacks&&... callbacks) {
+        auto callbacks(Callbacks&&... callbacks) {
             return [callbacks=std::make_tuple(std::forward<Callbacks>(callbacks)...)]
                 (const auto& data) mutable {
                 __impl::caller<sizeof...(Callbacks) - 1>::call(callbacks, data);
+            };
+        }
+
+        auto progress_bar_callback(const size_t& n, const std::string& title) {
+            return [pbar=progress_bar(n, title)](const auto&...) mutable {
+                pbar();
             };
         }
 

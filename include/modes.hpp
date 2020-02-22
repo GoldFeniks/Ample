@@ -6,6 +6,7 @@
 #include "normal_modes.h"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
+#include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {
@@ -142,30 +143,31 @@ namespace acstc {
 
         modes() = delete;
 
-        static auto create(const config<T>& config, const T& z) {
-            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), z);
+        static auto create(const config<T>& config, const T& z, const bool show_progress = false) {
+            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), z, show_progress);
         }
 
         static auto create(const config<T>& config, const T& z,
                 const T& x0, const T& x1, const size_t& nx,
-                const T& y0, const T& y1, const size_t& ny) {
+                const T& y0, const T& y1, const size_t& ny,
+                const bool show_progress = false) {
             return _create(config, utils::mesh_1d(x0, x1, nx), utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().field(x0, x1, nx, y0, y1, ny), z);
+                    config.bathymetry().field(x0, x1, nx, y0, y1, ny), z, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z, const size_t& nx, const size_t& ny) {
+        static auto create(const config<T>& config, const T& z, const size_t& nx, const size_t& ny, const bool show_progress = false) {
             const auto [x0, x1, y0, y1] = config.bounds();
-            return create(config, z, x0, x1, nx, y0, y1, ny);
+            return create(config, z, x0, x1, nx, y0, y1, ny, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z, const T& y0, const T& y1, const size_t& ny) {
+        static auto create(const config<T>& config, const T& z, const T& y0, const T& y1, const size_t& ny, const bool show_progress = false) {
             return _create(config, utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny), z);
+                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny), z, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z, const size_t& ny) {
+        static auto create(const config<T>& config, const T& z, const size_t& ny, const bool show_progress = false) {
             const auto [y0, y1] = config.y_bounds();
-            return create(config, z, y0, y1, ny);
+            return create(config, z, y0, y1, ny, show_progress);
         }
 
         static auto from_text(std::istream& stream, const size_t count) {
@@ -294,16 +296,21 @@ namespace acstc {
     private:
 
         template<typename XV, typename YV, typename DV>
-        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data, const T& z) {
+        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data, const T& z, const bool show_progress) {
             types::vector3d_t<V> k_j;
             types::vector3d_t<T> phi_j;
             const auto mm = config.max_mode();
             const auto nx = x.size();
             const auto ny = y.size();
+            utils::progress_bar pbar(nx * ny, "Modes");
+
             for (size_t i = 0; i < nx; ++i) {
                 size_t m = 0;
-                for (size_t j = 0; j < ny; ++j)
+                for (size_t j = 0; j < ny; ++j) {
                     _fill_data(calc_modes(config, x[i], data[i][j], z), k_j, phi_j, nx, ny, i, j, mm, m);
+                    if (show_progress)
+                        pbar();
+                }
             }
             smooth((y.back() - y.front()) / (y.size() - 1), config.border_width(), k_j, phi_j);
             return std::make_tuple(
@@ -312,14 +319,19 @@ namespace acstc {
         }
 
         template<typename YV, typename DV>
-        static auto _create(const config<T>& config, const YV& y, const DV& data, const T& z) {
+        static auto _create(const config<T>& config, const YV& y, const DV& data, const T& z, const bool show_progress) {
             types::vector2d_t<V> k_j;
             types::vector2d_t<T> phi_j;
             const auto mm = config.max_mode();
             const auto ny = y.size();
+            utils::progress_bar pbar(ny, "Modes");
+
             size_t m = 0;
-            for (size_t i = 0; i < ny; ++i)
+            for (size_t i = 0; i < ny; ++i) {
                 _fill_data(calc_modes(config, config.x0(), data[i], z), k_j, phi_j, ny, i, mm, m);
+                if (show_progress)
+                    pbar();
+            }
             return std::make_tuple(
                     utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
                     utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));

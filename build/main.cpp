@@ -13,6 +13,7 @@
 #include "utils/callback.hpp"
 #include "utils/verbosity.hpp"
 #include "initial_conditions.hpp"
+#include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
 #include "boost/program_options.hpp"
 
@@ -114,11 +115,11 @@ auto get_initial_conditions(const acstc::config<types::real_t>& config, const KS
 }
 
 template<typename F>
-auto add_verbosity(const size_t& report, F& function) {
+auto add_verbosity(const size_t& report, const size_t& n, F& function) {
     return [&](auto&& writer) mutable {
         const auto start = std::chrono::system_clock::now();
-        if (report)
-            function(acstc::utils::callbacks(writer, acstc::utils::progress_callback(report)));
+        if (acstc::utils::verbosity::instance().level >= 2)
+            function(acstc::utils::callbacks(writer, acstc::utils::progress_bar_callback(n, "Solution")));
         else
             function(writer);
         const auto end = std::chrono::system_clock::now();
@@ -161,7 +162,7 @@ auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& 
     return [&, mn](auto&& callback) mutable {
         if (config.const_modes()) {
             const auto start = std::chrono::system_clock::now();
-            auto [k_j, phi_j] = config.create_const_modes<T>();
+            auto [k_j, phi_j] = config.create_const_modes<T>(acstc::utils::verbosity::instance().level >= 2);
             const auto end = std::chrono::system_clock::now();
             verboseln(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
 
@@ -173,7 +174,7 @@ auto add_modes(const acstc::config<types::real_t>& config, const size_t mn, F1& 
             return;
         }
         const auto start = std::chrono::system_clock::now();
-        auto [k_j, phi_j] = config.create_modes<T>();
+        auto [k_j, phi_j] = config.create_modes<T>(acstc::utils::verbosity::instance().level >= 2);
         const auto end = std::chrono::system_clock::now();
         verboseln(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
         if (k_j.size() > mn) {
@@ -214,7 +215,7 @@ void write_modes(const KV& k_j, const PV& phi_j, W& writer, const WR& wrapper) {
 template<typename T, typename W>
 void save_modes(const acstc::config<types::real_t>& config, const std::string& filename, const bool binary, const W& wrapper) {
     if (config.const_modes()) {
-        const auto [k_j, phi_j] = config.create_const_modes<T>();
+        const auto [k_j, phi_j] = config.create_const_modes<T>(acstc::utils::verbosity::instance().level >= 2);
         const auto& ys = k_j.template get<0>();
         if (binary) {
             const auto ny = static_cast<const uint32_t>(ys.size());
@@ -232,7 +233,7 @@ void save_modes(const acstc::config<types::real_t>& config, const std::string& f
         write_modes(k_j, phi_j, writer, wrapper);
         return;
     }
-    const auto [k_j, phi_j] = config.create_modes<T>();
+    const auto [k_j, phi_j] = config.create_modes<T>(acstc::utils::verbosity::instance().level >= 2);
     const auto& xs = k_j.template get<0>();
     const auto& ys = k_j.template get<1>();
     if (binary) {
@@ -313,8 +314,6 @@ int main(int argc, char* argv[]) {
     generic.add_options()
             ("help,h", "Print this message")
             ("verbosity,v", po::value(&acstc::utils::verbosity::instance().level)->default_value(0), "Verbosity level")
-            ("report,r", po::value(&report)->default_value(0)->value_name("k"),
-                    "If verbosity level > 0 report every k computed rows (0 = don't report)")
             ("config,c", po::value(&config_filename)->default_value("config.json"), "Config filename");
 
     po::options_description output("Output options");
@@ -356,7 +355,7 @@ int main(int argc, char* argv[]) {
         const auto [k0, phi_s] = config.create_source_modes();
 
         auto execute_function = [&](auto&& with_solver) {
-            auto with_verbosity = add_verbosity(report, with_solver);
+            auto with_verbosity = add_verbosity(report, config.nx(), with_solver);
             auto with_writer = add_writer(config, output_filename, vm.count("binary") > 0, step, with_verbosity);
             with_writer();
         };
@@ -395,10 +394,10 @@ int main(int argc, char* argv[]) {
 
     if (job_type == "rays") {
         if (config.const_modes()) {
-            const auto [k_j, phi_j] = config.create_const_modes<types::real_t>();
+            const auto [k_j, phi_j] = config.create_const_modes<types::real_t>(acstc::utils::verbosity::instance().level >= 2);
             save_rays(config, output_filename, vm.count("binary") > 0, k_j, step);
         } else {
-            const auto [k_j, phi_j] = config.create_modes<types::real_t>();
+            const auto [k_j, phi_j] = config.create_modes<types::real_t>(acstc::utils::verbosity::instance().level >= 2);
             save_rays(config, output_filename, vm.count("binary") > 0, k_j, step);
         }
 

@@ -215,31 +215,31 @@ namespace acstc {
         }
 
         template<typename V = T>
-        auto create_modes(const T& z) const {
+        auto create_modes(const T& z, const bool show_progress = false) const {
             if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create(_data["modes"], border_width(), _path);
             if (_data.count("mnx") && _data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, z, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>());
-            return ::acstc::modes<T, V>::create(*this, z);
+                return ::acstc::modes<T, V>::create(*this, z, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>(), show_progress);
+            return ::acstc::modes<T, V>::create(*this, z, show_progress);
         }
 
         template<typename V = T>
-        auto create_modes() const {
-            return create_modes<V>(z_r());
+        auto create_modes(const bool show_progress = false) const {
+            return create_modes<V>(z_r(), show_progress);
         }
 
         template<typename V = T>
-        auto create_const_modes(const T& z) const {
+        auto create_const_modes(const T& z, const bool show_progress = false) const {
             if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create_const(_data["modes"], _path);
             if (_data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, z, _data["mny"].template get<size_t>());
-            return ::acstc::modes<T, V>::create(*this, z, bathymetry().y().size());
+                return ::acstc::modes<T, V>::create(*this, z, _data["mny"].template get<size_t>(), show_progress);
+            return ::acstc::modes<T, V>::create(*this, z, bathymetry().y().size(), show_progress);
         }
 
         template<typename V = T>
-        auto create_const_modes() const {
-            return create_const_modes<V>(z_r());
+        auto create_const_modes(const bool show_progress = false) const {
+            return create_const_modes<V>(z_r(), show_progress);
         }
 
         auto create_source_modes() const {
