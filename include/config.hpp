@@ -113,13 +113,29 @@ namespace acstc {
 
     }// namespace __impl;
 
-#define CONFIG_DATA_FIELD(field, type) const type& field () const {                      \
+#define CONFIG_DATA_FIELD(field, type)                                                   \
+    const type& field () const {                                                         \
         if (!_cache.count(#field))                                                       \
             _cache[#field] = new data_field<type>(_data[#field].template get<type>());   \
         return _cache[#field]->template cast<type>().value;                              \
+    }                                                                                    \
+    void field(const type& value) {                                                      \
+        if (const auto it = _cache.find(#field); it != _cache.end())                     \
+            _cache.erase(it);                                                            \
+        _data[#field] = value;                                                           \
+    }                                                                                    \
+    void field(type&& value) {                                                           \
+        if (const auto it = _cache.find(#field); it != _cache.end())                     \
+            _cache.erase(it);                                                            \
+        _data[#field] = std::move(value);                                                \
     }
 
-#define CONFIG_FIELD(field) const auto& field () const { return _##field; }
+
+#define CONFIG_FIELD(field, type)                                                        \
+    const type& field () const { return _##field; }                                      \
+    void field (const type& value) { _##field = value; }                                 \
+    void field (type&& value) { _##field = std::move(value); }
+
 
     template<typename T = types::real_t>
     class config {
@@ -185,10 +201,10 @@ namespace acstc {
         CONFIG_DATA_FIELD(nl, size_t)
         CONFIG_DATA_FIELD(init, std::string)
 
-        CONFIG_FIELD(data)
-        CONFIG_FIELD(a)
-        CONFIG_FIELD(b)
-        CONFIG_FIELD(c)
+        CONFIG_FIELD(data, json)
+        CONFIG_FIELD(a, T)
+        CONFIG_FIELD(b, T)
+        CONFIG_FIELD(c, T)
 
         auto x_bounds() const {
             return std::make_tuple(x0(), x1());
