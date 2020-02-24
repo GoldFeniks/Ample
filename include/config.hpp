@@ -14,9 +14,9 @@
 #include "utils/utils.hpp"
 #include "nlohmann/json.hpp"
 
-using json = nlohmann::json;
-
 namespace acstc {
+
+    using nlohmann::json;
 
     namespace __impl {
 
@@ -151,6 +151,15 @@ namespace acstc {
         }
 
         explicit config(const std::string& filename) : _data(_default_data()) {
+            update_from_file(filename);
+        }
+
+        ~config() {
+            for (const auto& [key, value] : _cache)
+                delete value;
+        }
+
+        void update_from_file(const std::string& filename) {
             _path = filename;
             std::ifstream in(filename);
             json data;
@@ -159,11 +168,7 @@ namespace acstc {
             _bathymetry = _create_bathymetry(_data["bathymetry"], _path);
             _hydrology = _create_hydrology(_data["hydrology"], _path);
             _fill_coefficients(_data["coefficients"]);
-        }
 
-        ~config() {
-            for (const auto& [key, value] : _cache)
-                delete value;
         }
 
         CONFIG_DATA_FIELD(mode_subset, double)
