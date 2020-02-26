@@ -146,7 +146,8 @@ namespace acstc {
         const auto lk = utils::function_as_vector([&i, &j, &k_j, &ry](const size_t& l) { return k_j[j].point(ry[j][i][l]); }, 0);
 
         for (j = 0; j < k_j.size(); ++j) {
-            const auto m0 = std::exp(ii * M_PI / Arg(4)) / std::sqrt(Arg(8) * M_PI * k0[j]);
+            const auto m0 = std::exp(ii * Arg(M_PI) / Arg(4)) / std::sqrt(Arg(8) * Arg(M_PI) * k0[j]);
+            // const auto m0 = 1 / std::sqrt(Arg(8) * M_PI * k0[j]);
 
             for (i = 0; i < na; ++i) {
                 const auto& ll = li[j][i];
@@ -176,7 +177,7 @@ namespace acstc {
         const auto coords = utils::function_as_vector([&j, &pairs](const size_t i) { return std::get<0>(pairs[j][i]); }, na);
         const auto values = utils::function_as_vector([&j, &pairs](const size_t i) { return std::get<1>(pairs[j][i]); }, na);
 
-        for (j = 0; j < result.size(); ++j) {
+        for (j = 0; j < k_j.size(); ++j) {
             const auto il = std::min(size_t((std::get<0>(pairs[j][0]) - yl) / hy) + 1, ny - 1);
             const auto ir = std::min(size_t((std::get<0>(pairs[j].back()) - yl) / hy), ny - 1);
             const auto id = ir - il;
@@ -186,7 +187,7 @@ namespace acstc {
             const auto ly = yy[jl];
             const auto ry = yy[jr];
 
-            utils::__impl::linear_interpolation::line(ly, ry, coords, values, result[j].begin() + il, result[j].begin() + ir + 1);
+            utils::__impl::linear_interpolation::line(yy[il], yy[ir], coords, values, result[j].begin() + il, result[j].begin() + ir + 1);
 
             __impl::smooth(il, jl, ly, std::pow(ly - yy[il], 2), yy, result[j]);
             __impl::smooth(jr, ir, ry, std::pow(ry - yy[ir], 2), yy, result[j]);
@@ -198,6 +199,60 @@ namespace acstc {
         }
 
         return result;        
+    }
+
+    template<typename Arg, typename K0, typename PS, typename Val = std::complex<Arg>>
+    auto simple_ray_source(const Arg& x, const Arg& yl, const Arg& yr, const size_t& ny,
+                    const Arg& a0, const Arg& a1, const size_t& na,
+                    const K0& k0,  const PS& ps,
+                    const double smooth_ratio = 0.1) {
+        if (k0.size() != ps.size())
+            throw std::logic_error("Arguments k0 and ps must have the same size");
+
+        const auto as = utils::mesh_1d(a0, a1, na);
+
+        types::vector1d_t<Arg> ls(na), cs(na);
+        for (size_t i = 0; i < na; ++i) {
+            ls[i] = x / std::cos(as[i]);
+            cs[i] = ls[i] * std::sin(as[i]);
+        }
+
+        static constexpr auto ii = Val(0, 1);
+
+        types::vector2d_t<Val> vs(k0.size(), types::vector1d_t<Val>(na));
+        for (size_t j = 0; j < k0.size(); ++j) {
+            const auto m0 = std::exp(ii * Arg(M_PI) / Arg(4)) / std::sqrt(Arg(8) * Arg(M_PI) * k0[j]);
+            for (size_t i = 0; i < na; ++i)
+                vs[j][i] = m0 * std::exp(ii * k0[j] * ls[i]) / std::sqrt(ls[i]);
+        }
+
+        types::vector2d_t<Val> result(k0.size(), types::vector1d_t<Val>(ny, Val(0)));
+
+        const auto hy = (yr - yl) / (ny - 1);
+        const auto yy = utils::mesh_1d(yl, yr, ny);
+
+        const auto il = std::min(size_t((cs[0] - yl) / hy) + 1, ny - 1);
+        const auto ir = std::min(size_t((cs.back() - yl) / hy), ny - 1);
+        const auto id = ir - il;
+        const auto jl = il + size_t(id * smooth_ratio);
+        const auto jr = ir - size_t(id * smooth_ratio);
+
+        const auto ly = yy[jl];
+        const auto ry = yy[jr];
+
+        for (size_t j = 0; j < k0.size(); ++j) {
+            utils::__impl::linear_interpolation::line(yy[il], yy[ir], cs, vs[j], result[j].begin() + il, result[j].begin() + ir + 1);
+
+            __impl::smooth(il, jl, ly, std::pow(ly - yy[il], 2), yy, result[j]);
+            __impl::smooth(jr, ir, ry, std::pow(ry - yy[ir], 2), yy, result[j]);
+
+            for (size_t i = il + 1; i < ir; ++i)
+                result[j][i] *= ps[j];
+
+            result[j][il] = result[j][ir] = Val(0);
+        }
+
+        return result;
     }
 
 }// namespace acstc

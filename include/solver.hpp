@@ -87,7 +87,7 @@ namespace acstc {
 
                 auto pk = ik;
 
-                auto x = _hx;
+                auto x = _x0 + _hx;
                 auto solver = _get_thomas_solver();
 
                 for (size_t i = 1; i < _nx; ++i) {
@@ -191,7 +191,7 @@ namespace acstc {
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
                 types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
 
-                auto x = _hx;
+                auto x = _x0 + _hx;
                 auto solver = _get_thomas_solver();
 
                 for (size_t i = 1; i < _nx; ++i) {

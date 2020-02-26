@@ -268,6 +268,12 @@ void print_initial_conditions(std::stringstream& stream) {
         stream << "Green source";
     else if (type == "gauss")
         stream << "Gaussian source";
+    else if (type == "ray_simple") {
+        stream << "Ray-based source assuming homogeneous medium;\n";
+        print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
+        stream << '\n';
+        return;
+    }
     else if (type == "ray") {
         stream << "Ray-based source;\n";
         print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
@@ -339,12 +345,12 @@ auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s) {
-    auto [k_j, phi_j] = config.create_const_modes<types::real_t>();
+    auto [k_j, phi_j] = config.create_const_modes<types::real_t>(acstc::utils::verbosity::instance().level >= 2);
 
     if (k_j.size() > k0.size())
         k_j.erase_last(k_j.size() - k0.size());
 
-    return get_ray_initial_conditions(k0, phi_s, phi_j);
+    return get_ray_initial_conditions(k0, phi_s, k_j);
 }
 
 template<typename KS, typename PS>
@@ -397,6 +403,10 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
 
     if (init == "gauss")
         return acstc::gaussian_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
+
+    if (init == "ray_simple")
+        return acstc::simple_ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 
+            config.a0(), config.a1(), config.na(), k0, phi_s);
 
     throw new std::logic_error(std::string("Unknown initial conditions type: ") + init);
 }
