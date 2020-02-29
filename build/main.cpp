@@ -258,6 +258,13 @@ void print_modes(std::stringstream& stream) {
     stream << '\n';
 }
 
+void print_tapering(std::stringstream& stream) {
+    const auto& [type, vl, vr] = config.get_tapering_parameters();
+    stream << "    Tapering:\n        Type: " << type << ";\n" << 
+        "        Left: " << vl << ";\n" <<
+        "        Right: " << vr << ";\n";
+}
+
 void print_initial_conditions(std::stringstream& stream) {
     const auto& data = config.data();
 
@@ -271,6 +278,7 @@ void print_initial_conditions(std::stringstream& stream) {
     else if (type == "ray_simple") {
         stream << "Ray-based source assuming homogeneous medium;\n";
         print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
+        print_tapering(stream);
         stream << '\n';
         return;
     }
@@ -278,6 +286,7 @@ void print_initial_conditions(std::stringstream& stream) {
         stream << "Ray-based source;\n";
         print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
         print_mesh_spec("Natural parameter mesh", data["l0"], data["l1"], data["nl"], stream);
+        print_tapering(stream);
         stream << '\n';
         return;
     }
@@ -336,11 +345,26 @@ void verbose_config_field_group_parameters(const field_group& group) {
     std::cout << stream.str();
 }
 
+template<typename F>
+auto pass_tapering(const F& func) {
+    const auto& [type, vl, vr] = config.get_tapering_parameters();
+    if (type == "percentage")
+        return func(acstc::percentage_tapering(vl, vr));
+    if (type == "angled")
+        return func(acstc::angled_tapering(vl, vr));
+
+    throw new std::logic_error(std::string("Unknown tapering type: ") + type);
+}
+
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
     const acstc::utils::linear_interpolated_data_1d<types::real_t>& k_j) {
-    return acstc::ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 0., config.y_s(), config.l1(), config.nl(),
-            config.a0(), config.a1(), config.na(), k0, phi_s, k_j);
+    return pass_tapering(
+        [&](const auto& tapering) {
+            return acstc::ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 0., config.y_s(), config.l1(), config.nl(),
+                config.a0(), config.a1(), config.na(), k0, phi_s, k_j, tapering);
+        }
+    );
 }
 
 template<typename KS, typename PS>
@@ -405,8 +429,12 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
         return acstc::gaussian_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
 
     if (init == "ray_simple")
-        return acstc::simple_ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 
-            config.a0(), config.a1(), config.na(), k0, phi_s);
+        return pass_tapering(
+            [&](const auto& tapering) {
+                return acstc::simple_ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 
+                    config.a0(), config.a1(), k0, phi_s, tapering);
+            }
+        );
 
     throw new std::logic_error(std::string("Unknown initial conditions type: ") + init);
 }

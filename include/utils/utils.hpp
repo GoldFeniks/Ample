@@ -316,6 +316,13 @@ namespace acstc {
             return result;
         }
 
+        template<typename V, typename F>
+        auto make_vector(const V& data, const F& func) {
+            types::vector1d_t<decltype(func(data[0]))> result(data.size());
+            std::transform(data.begin(), data.end(), result.begin(), func);
+            return result;
+        }
+
         std::filesystem::path make_file_path(const std::filesystem::path root, const std::filesystem::path& filename) {
             if (!root.has_filename() || filename.is_absolute())
                 return filename;

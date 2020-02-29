@@ -13,6 +13,7 @@
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "nlohmann/json.hpp"
+#include "initial_conditions.hpp"
 
 namespace acstc {
 
@@ -275,6 +276,15 @@ namespace acstc {
             return std::make_tuple(k0, phi_s);
         }
 
+        auto get_tapering_parameters() const {
+            const auto type = _data["/tapering/0"_json_pointer].get<std::string>();
+            const auto& data = _data["/tapering/1"_json_pointer];
+            if (data.count("left") && data.count("right"))
+                return std::make_tuple(type, data["left"].get<T>(), data["right"].get<T>());
+            const auto value = data["value"].get<T>();
+            return std::make_tuple(type, value, value);
+        }
+
     private:
 
         template<typename>
@@ -303,6 +313,7 @@ namespace acstc {
 
         json _data;
         T _a, _b, _c;
+
         std::filesystem::path _path;
         utils::linear_interpolated_data_2d<T> _bathymetry;
         utils::delaunay_interpolated_data_2d<T> _hydrology;
@@ -370,7 +381,14 @@ namespace acstc {
                 { "l0", T(0) },
                 { "l1", T(4000) },
                 { "nl", size_t(4001) },
-                { "init", "green" }
+                { "init", "green" },
+                { "tapering", 
+                  { "angled",
+                    {
+                      { "value", T(0.1) }
+                    }
+                  }
+                }
             };
         }
 

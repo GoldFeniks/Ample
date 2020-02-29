@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <functional>
+#include <type_traits>
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/interpolation.hpp"
@@ -39,14 +40,168 @@ namespace acstc {
         }
 
         template<typename T, typename C, typename V>
-        inline auto smooth(const size_t& l, const size_t& r, const T& rc, const T& d, const C& coords, V& result) {
+        void _taper_interval(const size_t& l, const size_t& r, const T& rc, const T& d, const C& coords, V& values) {
             for (size_t i = l + 1; i < r; ++i) {
                 const auto v = std::pow(rc - coords[i], 2) / d;
-                result[i] *= std::exp(v * v * (T(1) / (v - T(1)) - T(1)));
+                values[i] *= std::exp(v * v * (T(1) / (v - T(1)) - T(1)));
+            }
+        }
+
+        template<typename C, typename V>
+        void taper_interval(const size_t& il, const size_t& jl, const size_t& ir, const size_t& jr, const C& coords, V& values) {
+            const auto lc = coords[jl];
+            const auto rc = coords[jr];
+
+            _taper_interval(il, jl, lc, std::pow(lc - coords[il], 2), coords, values);
+            _taper_interval(jr, ir, rc, std::pow(rc - coords[ir], 2), coords, values);
+
+            constexpr std::remove_reference_t<decltype(values[0])> zero(0);
+
+            values[il] = values[ir] = zero;
+        }
+
+        template<typename C, typename V>
+        void taper_interval_all(const size_t& il, const size_t& jl, const size_t& ir, const size_t& jr, const C& coords, V& values) {
+            const auto lc = coords[jl];
+            const auto rc = coords[jr];
+
+            constexpr std::remove_reference_t<decltype(values[0][0])> zero(0);
+
+            for (auto& it : values) {
+                _taper_interval(il, jl, lc, std::pow(lc - coords[il], 2), coords, it);
+                _taper_interval(jr, ir, rc, std::pow(rc - coords[ir], 2), coords, it);
+
+                it[il] = it[ir] = zero;
+            }
+        }
+
+        template<typename T, typename C, typename V>
+        void _taper_tail(const size_t& l, const size_t& r, const T& rc, const T& d, const C& coords, V& values) {
+            for (size_t i = l; i < r; ++i)
+                values[i] *= std::exp(-std::pow(rc - coords[i], 2) / d);
+        }
+
+        template<typename C, typename V>
+        void taper_tail(const size_t& il, const size_t& jl, const size_t& ir, const size_t& jr, const C& coords, V& values) {
+            const auto lc = coords[il];
+            const auto rc = coords[ir];
+
+            _taper_tail(0,                 il, lc, std::pow(lc - coords[jl], 2), coords, values);
+            _taper_tail(ir + 1, coords.size(), rc, std::pow(rc - coords[jr], 2), coords, values);
+        }
+
+        template<typename C, typename V>
+        void taper_tail_all(const size_t& il, const size_t& jl, const size_t& ir, const size_t& jr, const C& coords, V& values) {
+            const auto lc = coords[il];
+            const auto rc = coords[ir];
+
+            const auto dl = std::pow(lc - coords[jl], 2);
+            const auto dr = std::pow(rc - coords[jr], 2);
+
+            for (auto& it : values) {
+                _taper_tail(0,                 il, lc, dl, coords, it);
+                _taper_tail(ir + 1, coords.size(), rc, dr, coords, it);
             }
         }
 
     }// namespace __impl
+
+    template<typename T>
+    class percentage_tapering {
+
+    public:
+
+        explicit percentage_tapering(const T& p) : _pl(p), _pr(p) {}
+        explicit percentage_tapering(const T& pl, const T& pr) : _pl(pl), _pr(pr) {}
+
+        template<typename C, typename A, typename V>
+        void interval(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir);
+
+            __impl::taper_interval(il, jl, ir, jr, coords, values);
+        }
+
+        template<typename C, typename A, typename V>
+        void interval_all(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir);
+
+            __impl::taper_interval_all(il, jl, ir, jr, coords, values);
+        }
+
+        template<typename C, typename A, typename V>
+        void tail(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir);
+
+            __impl::taper_tail(il, jl, ir, jr, coords, values);
+        }
+
+        template<typename C, typename A, typename V>
+        void tail_all(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir);
+
+            __impl::taper_tail_all(il, jl, ir, jr, coords, values);
+        }
+
+    private:
+
+        const T _pl, _pr;
+
+        auto _get_boundaries(const size_t& il, const size_t& ir) const {
+            const auto id = ir - il;
+            return std::make_tuple(il + size_t(id * _pl), ir - size_t(id * _pr));
+        }
+
+    };
+
+    template<typename T>
+    class angled_tapering {
+
+    public:
+
+        angled_tapering(const T& w) : _wl(w), _wr(w) {}
+        angled_tapering(const T& wl, const T& wr) : _wl(wl), _wr(wr) {}
+
+        template<typename C, typename A, typename V>
+        void interval(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir, angles);
+
+            __impl::taper_interval(il, jl, ir, jr, angles, values);
+        }
+
+        template<typename C, typename A, typename V>
+        void interval_all(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir, angles);
+
+            __impl::taper_interval_all(il, jl, ir, jr, angles, values);
+        }
+
+        template<typename C, typename A, typename V>
+        void tail(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir, angles);
+
+            __impl::taper_tail(il, jl, ir, jr, angles, values);
+        }
+
+        template<typename C, typename A, typename V>
+        void tail_all(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
+            const auto [jl, jr] = _get_boundaries(il, ir, angles);
+
+            __impl::taper_tail_all(il, jl, ir, jr, angles, values);
+        }
+
+    private:
+
+        const T _wl, _wr;
+
+        template<typename A>
+        auto _get_boundaries(const size_t& il, const size_t& ir, const A& angles) const {
+            return std::make_tuple(
+                std::distance(angles.begin(), std::upper_bound(angles.begin(), angles.end(), angles[il] + _wl)),
+                std::distance(angles.begin(), std::lower_bound(angles.begin(), angles.end(), angles[ir] - _wr))
+            );
+        }
+
+    };
     
 
     template<typename Arg, typename Val = Arg>
@@ -110,14 +265,14 @@ namespace acstc {
                 }, ca, cw);
     }
 
-    template<typename Arg, typename K0, typename PS, typename Val = std::complex<Arg>>
+    template<typename Arg, typename K0, typename PS, typename TA, typename Val = std::complex<Arg>>
     auto ray_source(const Arg& x, 
                     const Arg& yl, const Arg& yr, const size_t& ny,
                     const Arg& x0, const Arg& y0, 
                     const Arg& l1, const size_t& nl, 
                     const Arg& a0, const Arg& a1, const size_t& na,
                     const K0& k0,  const PS& ps, const utils::linear_interpolated_data_1d<Arg, Arg>& k_j,
-                    const double smooth_ratio = 0.1) {
+                    const TA& tapering) {
         if (k0.size() != k_j.size() || ps.size() != k_j.size())
             throw std::logic_error("Arguments k0, ps and k_j must have the same size");
 
@@ -147,7 +302,6 @@ namespace acstc {
 
         for (j = 0; j < k_j.size(); ++j) {
             const auto m0 = std::exp(ii * Arg(M_PI) / Arg(4)) / std::sqrt(Arg(8) * Arg(M_PI) * k0[j]);
-            // const auto m0 = 1 / std::sqrt(Arg(8) * M_PI * k0[j]);
 
             for (i = 0; i < na; ++i) {
                 const auto& ll = li[j][i];
@@ -172,6 +326,8 @@ namespace acstc {
 
         const auto hy = (yr - yl) / (ny - 1);
         const auto yy = utils::mesh_1d(yl, yr, ny);
+
+        types::vector1d_t<Arg> aa(ny, Arg(0));
         types::vector2d_t<Val> result(k_j.size(), types::vector1d_t<Val>(ny, Val(0)));        
 
         const auto coords = utils::function_as_vector([&j, &pairs](const size_t i) { return std::get<0>(pairs[j][i]); }, na);
@@ -180,77 +336,43 @@ namespace acstc {
         for (j = 0; j < k_j.size(); ++j) {
             const auto il = std::min(size_t((std::get<0>(pairs[j][0]) - yl) / hy) + 1, ny - 1);
             const auto ir = std::min(size_t((std::get<0>(pairs[j].back()) - yl) / hy), ny - 1);
-            const auto id = ir - il;
-            const auto jl = il + size_t(id * smooth_ratio);
-            const auto jr = ir - size_t(id * smooth_ratio);
-
-            const auto ly = yy[jl];
-            const auto ry = yy[jr];
 
             utils::__impl::linear_interpolation::line(yy[il], yy[ir], coords, values, result[j].begin() + il, result[j].begin() + ir + 1);
+            utils::__impl::linear_interpolation::line(yy[il], yy[ir], coords, as, aa.begin() + il, aa.begin() + ir + 1);
 
-            __impl::smooth(il, jl, ly, std::pow(ly - yy[il], 2), yy, result[j]);
-            __impl::smooth(jr, ir, ry, std::pow(ry - yy[ir], 2), yy, result[j]);
+            tapering.interval(il, ir, yy, aa, result[j]);
 
-            for (i = il + 1; i < ir; ++i)
-                result[j][i] *= ps[j];
-
-            result[j][il] = result[j][ir] = Val(0);
+            std::transform(result[j].begin(), result[j].end(), result[j].begin(), [&ps, &j](const auto& v) { return v * ps[j]; });
         }
 
         return result;        
     }
 
-    template<typename Arg, typename K0, typename PS, typename Val = std::complex<Arg>>
+    template<typename Arg, typename K0, typename PS, typename TA, typename Val = std::complex<Arg>>
     auto simple_ray_source(const Arg& x, const Arg& yl, const Arg& yr, const size_t& ny,
-                    const Arg& a0, const Arg& a1, const size_t& na,
-                    const K0& k0,  const PS& ps,
-                    const double smooth_ratio = 0.1) {
+                    const Arg& a0, const Arg& a1, const K0& k0,  const PS& ps,
+                    const TA& tapering) {
         if (k0.size() != ps.size())
             throw std::logic_error("Arguments k0 and ps must have the same size");
 
-        const auto as = utils::mesh_1d(a0, a1, na);
-
-        types::vector1d_t<Arg> ls(na), cs(na);
-        for (size_t i = 0; i < na; ++i) {
-            ls[i] = x / std::cos(as[i]);
-            cs[i] = ls[i] * std::sin(as[i]);
-        }
+        const auto ys = utils::mesh_1d(yl, yr, ny);
+        const auto ls = utils::make_vector(ys, [x=std::pow(x, 2)](const auto& y) { return std::sqrt(y * y + x); });
+        const auto sl = utils::make_vector(ls, [](const auto& l) { return std::sqrt(l); });
+        const auto as = utils::make_vector(ys, [&x](const auto& y) { return std::atan(y / x); });
 
         static constexpr auto ii = Val(0, 1);
 
-        types::vector2d_t<Val> vs(k0.size(), types::vector1d_t<Val>(na));
+        types::vector2d_t<Val> result(k0.size(), types::vector1d_t<Val>(ny));
         for (size_t j = 0; j < k0.size(); ++j) {
             const auto m0 = std::exp(ii * Arg(M_PI) / Arg(4)) / std::sqrt(Arg(8) * Arg(M_PI) * k0[j]);
-            for (size_t i = 0; i < na; ++i)
-                vs[j][i] = m0 * std::exp(ii * k0[j] * ls[i]) / std::sqrt(ls[i]);
+            for (size_t i = 0; i < ny; ++i)
+                result[j][i] = ps[j] * m0 * std::exp(ii * k0[j] * ls[i]) / std::sqrt(ls[i]);
         }
 
-        types::vector2d_t<Val> result(k0.size(), types::vector1d_t<Val>(ny, Val(0)));
+        const auto il = std::distance(as.begin(), std::upper_bound(as.begin(), as.end(), a0));
+        const auto ir = std::distance(as.begin(), std::lower_bound(as.begin(), as.end(), a1));
 
-        const auto hy = (yr - yl) / (ny - 1);
-        const auto yy = utils::mesh_1d(yl, yr, ny);
-
-        const auto il = std::min(size_t((cs[0] - yl) / hy) + 1, ny - 1);
-        const auto ir = std::min(size_t((cs.back() - yl) / hy), ny - 1);
-        const auto id = ir - il;
-        const auto jl = il + size_t(id * smooth_ratio);
-        const auto jr = ir - size_t(id * smooth_ratio);
-
-        const auto ly = yy[jl];
-        const auto ry = yy[jr];
-
-        for (size_t j = 0; j < k0.size(); ++j) {
-            utils::__impl::linear_interpolation::line(yy[il], yy[ir], cs, vs[j], result[j].begin() + il, result[j].begin() + ir + 1);
-
-            __impl::smooth(il, jl, ly, std::pow(ly - yy[il], 2), yy, result[j]);
-            __impl::smooth(jr, ir, ry, std::pow(ry - yy[ir], 2), yy, result[j]);
-
-            for (size_t i = il + 1; i < ir; ++i)
-                result[j][i] *= ps[j];
-
-            result[j][il] = result[j][ir] = Val(0);
-        }
+        tapering.tail_all(il, ir, ys, as, result);
 
         return result;
     }
