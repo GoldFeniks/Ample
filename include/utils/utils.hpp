@@ -308,6 +308,9 @@ namespace acstc {
 
         template<typename T>
         auto mesh_1d(const T& a, const T& b, const size_t& n) {
+            if (n == 1)
+                return types::vector1d_t<T>{ a };
+
             const auto h = (b - a) / (n - 1);
             types::vector1d_t<T> result;
             result.reserve(n);
