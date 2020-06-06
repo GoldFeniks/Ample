@@ -117,6 +117,8 @@ namespace acstc {
             template<typename... Args>
             explicit writer(Args&&... args) : Base(std::forward<Args>(args)...) {}
 
+            writer(const writer& other) = delete;
+
             template<typename It>
             void write(It begin, It end) {
                 this->before_write();
