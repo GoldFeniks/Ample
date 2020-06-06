@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <string>
 #include <cstddef>
 #include <iostream>
@@ -19,22 +20,35 @@ namespace acstc {
 
         public:
 
-            progress_bar(const size_t& n, std::string title) : 
+            enum class leave_behavior {
+                stay, leave, global
+            };
+
+            inline static bool leave = false;
+
+            progress_bar(const size_t& n, const std::string& description = "", 
+                const bool& enabled = true, const leave_behavior& leave = leave_behavior::global) : 
                 _n(n),
-                _n_string(std::string("/") + std::to_string(n)),
-                _title(std::move(title))
+                _description(description),
+                _leave(leave),
+                _enabled(enabled)
             {
-                const auto size = get_window_size();
-                _clear_string = std::string(size, ' ');
-
-                _iterations_width = static_cast<int>(_n_string.size() - 1);
-
-                const auto available = size - _n_string.size() * 2 - _title.size() - 9;
-                _progress_string = std::string(available, '.');
+                write_progress();
             }
+
+            progress_bar(const progress_bar&) = delete;
+            progress_bar(progress_bar&&) = delete;
+
+            progress_bar& operator=(const progress_bar&) = delete;
+            progress_bar& operator=(progress_bar&) = delete;
 
             void operator()() {
                 next();
+            }
+
+            ~progress_bar() {
+                if (!_first && (_leave == leave_behavior::leave || _leave == leave_behavior::global && leave))
+                    do_leave();
             }
 
             void next() {
@@ -43,15 +57,11 @@ namespace acstc {
 
                 ++_cur;
 
-                if (_cur == _n) {
-                    for (size_t i = _last_ind; i < _progress_string.size(); ++i)
-                        _progress_string[i] = '=';
-                    write_bar(100);
-                    printf("\n");
-                    return;
+                if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _time_point).count() > delay || 
+                    _cur == _n) {
+                    write_progress();
+                    _time_point = std::chrono::system_clock::now();
                 }
-
-                write_progress();
             }
 
             const size_t& size() const {
@@ -62,12 +72,52 @@ namespace acstc {
                 return _cur;
             }
 
+            auto begin() {
+                return iterator(this, _cur);
+            }
+
+            auto end() {
+                return iterator(this, _n);
+            }
+
+            void set_description(const std::string& description) {
+                _description = description;
+                write();
+            }
+
+            void set_description(std::string&& description) {
+                _description = std::move(description);
+                write();
+            }
+
+            template<typename T>
+            void set_description(const T& value) {
+                set_description(std::to_string(value));
+            }
+
         private:
 
-            size_t _cur = 0, _last_ind = 0;
-            int _iterations_width;
+            static constexpr size_t delay = 100;
+            static constexpr auto long_dots = "................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................";
+            static constexpr auto long_eqqs = "================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================";
+
             const size_t _n;
-            std::string _n_string, _clear_string, _progress_string, _title;
+            leave_behavior _leave;
+            std::string _description;
+            bool _first = true, _enabled;
+            size_t _cur = 0, _last = 0, _elapsed = 0, _k = 0;
+
+            char* _buffer = new char[512];
+            std::chrono::system_clock::time_point _time_point;
+
+            void do_leave() {
+                if (_first)
+                    return;
+
+                printf("\033[2K\033[1F");
+                fflush(stdout);
+            }
+
 
             static size_t get_window_size() {
 #ifdef _WIN32
@@ -82,27 +132,85 @@ namespace acstc {
             }
 
             void write_progress() {
-                const auto progress = double(_cur) / _n;
-                const auto ind = size_t(progress * _progress_string.size());
+                if (!_enabled)
+                    return;
 
-                if (ind > _last_ind) {
-                    for (size_t i = _last_ind; i < ind; ++i)
-                        _progress_string[i] = '=';
-                    _last_ind = ind;
+                if (_first) {
+                    printf("\n");
+                    _first = false;
+                    _time_point = std::chrono::system_clock::now();
                 }
-                _progress_string[ind] = '>';
-                write_bar(progress * 100);
+
+                const auto count = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _time_point).count();
+                const auto ips = count ? 1000 * (_cur - _last) / static_cast<double>(count): double(0);
+
+                const auto est = count ? static_cast<size_t>((_n - _cur) / ips) : 0;
+                const auto ht = est / 3600;
+                const auto mt = (est - ht * 3600) / 60;
+                const auto st = est - ht * 3600 - mt * 60;
+
+                _elapsed += count;
+                const auto es = _elapsed / 1000;
+                const auto he = es / 3600;
+                const auto me = (es - he * 3600) / 60;
+                const auto se = es - he * 3600 - me * 60;
+
+                _k = sprintf(_buffer, "| %zu/%zu [ %02zu:%02zu:%02zu<%02zu:%02zu:%02zu ] %.2f it/s ", _cur, _n, he, me, se, ht, mt, st, ips);
+
+                write();
+
+                _last = _cur;
             }
 
-            void write_bar(const size_t& progress) const {
-                printf("\r%s\r%s: %3d%%|%s| %*zu%s ", _clear_string.c_str(), _title.c_str(), progress, _progress_string.c_str(), 
-                    _iterations_width, _cur, _n_string.c_str());
+            void write() const {
+                const auto size = get_window_size();
+
+                const auto progress = double(_cur) / _n;
+
+                const auto has_description = static_cast<int>(_description.size() > 0);
+                const auto used = _k + static_cast<int>(_description.size()) + has_description + 7;
+                const auto middle = size > used ? size - used : 0;
+                const auto eqqs = static_cast<int>(middle * progress);
+                const auto dots = middle > eqqs ? middle - eqqs - 1 : 0;
+
+                printf("\033[2K\033[1G%s%.*s %3d%%|%.*s%.*s%.*s%s",  _description.c_str(), has_description, ":",
+                    static_cast<size_t>(progress * 100), eqqs, long_eqqs, static_cast<int>(_n != _cur), ">", dots, long_dots, _buffer);
                 fflush(stdout);
             }
+
+            class iterator {
+
+            public:
+
+                iterator(progress_bar* owner, const size_t& cur) : _owner(owner), _cur(cur) {}
+
+                iterator& operator++() {
+                    _owner->next();
+                    ++_cur;
+                    return *this;
+                }
+
+                bool operator==(const iterator& other) const {
+                    return _owner == other._owner && _cur == other._cur;
+                }
+
+                bool operator!=(const iterator& other) const {
+                    return !(*this == other);
+                }
+
+                const size_t& operator*() const {
+                    return _cur;
+                }
+
+            private:
+
+                size_t _cur;
+                progress_bar* _owner;
+
+            };
 
         };
 
     }// namespace utils
-
 
 }// namespace acstc
