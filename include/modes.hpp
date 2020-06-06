@@ -97,7 +97,7 @@ namespace acstc {
 
             static void copy(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
                     const size_t& i, const size_t& j) {
-                for (size_t k = 0; k < std::min(n_m.mattenuation.size(), k_j.size()); ++k) {
+                for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
                     k_j[k][i][j] = V(n_m.khs[k], n_m.mattenuation[k]);
                     phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
                 }
@@ -105,7 +105,7 @@ namespace acstc {
 
             static void copy(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
                              const size_t& i) {
-                for (size_t k = 0; k < std::min(n_m.mattenuation.size(), k_j.size()); ++k) {
+                for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
                     k_j[k][i] = V(n_m.khs[k], n_m.mattenuation[k]);
                     phi_j[k][i] = n_m.mfunctions_zr[k][0];
                 }
@@ -143,31 +143,34 @@ namespace acstc {
 
         modes() = delete;
 
-        static auto create(const config<T>& config, const T& z, const bool show_progress = false) {
-            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), z, show_progress);
+        static auto create(const config<T>& config, const size_t& c = 0, const bool show_progress = false) {
+            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), c, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z,
+        static auto create(const config<T>& config,
                 const T& x0, const T& x1, const size_t& nx,
                 const T& y0, const T& y1, const size_t& ny,
+                const size_t& c = 0,
                 const bool show_progress = false) {
             return _create(config, utils::mesh_1d(x0, x1, nx), utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().field(x0, x1, nx, y0, y1, ny), z, show_progress);
+                    config.bathymetry().field(x0, x1, nx, y0, y1, ny), c, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z, const size_t& nx, const size_t& ny, const bool show_progress = false) {
+        static auto create(const config<T>& config, const size_t& nx, const size_t& ny, 
+            const size_t& c = 0, const bool show_progress = false) {
             const auto [x0, x1, y0, y1] = config.bounds();
-            return create(config, z, x0, x1, nx, y0, y1, ny, show_progress);
+            return create(config, x0, x1, nx, y0, y1, ny, c, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z, const T& y0, const T& y1, const size_t& ny, const bool show_progress = false) {
+        static auto create(const config<T>& config, const T& y0, const T& y1, const size_t& ny, 
+            const size_t& c = 0, const bool show_progress = false) {
             return _create(config, utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny), z, show_progress);
+                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny), c, show_progress);
         }
 
-        static auto create(const config<T>& config, const T& z, const size_t& ny, const bool show_progress = false) {
+        static auto create(const config<T>& config, const size_t& ny, const size_t& c = 0, const bool show_progress = false) {
             const auto [y0, y1] = config.y_bounds();
-            return create(config, z, y0, y1, ny, show_progress);
+            return create(config, y0, y1, ny, c, show_progress);
         }
 
         static auto from_text(std::istream& stream, const size_t count) {
@@ -194,7 +197,7 @@ namespace acstc {
                     stream.read(reinterpret_cast<char*>(k_j[j][i].data()), sizeof(V) * m);
             for (size_t j = 0; j < k; ++j)
                 for (size_t i = 0; i < n; ++i)
-                    stream.read(reinterpret_cast<char*>(phi_j[j][i].data()), sizeof(V) * m);
+                    stream.read(reinterpret_cast<char*>(phi_j[j][i].data()), sizeof(T) * m);
             smooth((y.back() - y.front()) / (y.size() - 1), count, k_j, phi_j);
             return std::make_tuple(
                     utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
@@ -236,8 +239,12 @@ namespace acstc {
             return const_from_binary(stream);
         }
 
-        static auto calc_modes(const config<T>& config, const T& x, const T& depth, const T& z) {
+        static auto calc_modes(const config<T>& config, const T& x, const T& depth, const T& z, const size_t& c = 0) {
             NormalModes n_m;
+
+            if (depth < z)
+                return n_m;
+
             n_m.iModesSubset = config.mode_subset();
             n_m.ppm = static_cast<unsigned int>(config.ppm());
             n_m.ordRich = static_cast<unsigned int>(config.ordRich());
@@ -245,6 +252,9 @@ namespace acstc {
             n_m.f = config.f();
             n_m.M_betas = config.betas();
 
+            n_m.eigen_type = "alglib";
+            n_m.nmod = static_cast<int>(c);
+            n_m.alpha = M_PI / 180 * (c > 0);
             auto buff = utils::mesh_1d(T(0), depth, config.n_layers() + 1);
             n_m.M_depths.assign(buff.begin() + 1, buff.end());
             if (config.additive_depth()) {
@@ -264,9 +274,9 @@ namespace acstc {
             n_m.M_rhos.insert(n_m.M_rhos.end(), config.bottom_rhos().begin(), config.bottom_rhos().end());
 
             n_m.M_Ns_points.resize(n_m.M_depths.size());
-            n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(round(n_m.ppm * n_m.M_depths[0])));
+            n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(n_m.ppm * n_m.M_depths[0]));
             for (size_t i = 1; i < n_m.M_depths.size(); ++i)
-                n_m.M_Ns_points[i] = static_cast<unsigned>(round(n_m.ppm * (n_m.M_depths[i] - n_m.M_depths[i - 1])));
+                n_m.M_Ns_points[i] = static_cast<unsigned>(std::round(n_m.ppm * (n_m.M_depths[i] - n_m.M_depths[i - 1])));
 
             n_m.compute_khs();
             n_m.compute_mfunctions_zr();
@@ -296,18 +306,19 @@ namespace acstc {
     private:
 
         template<typename XV, typename YV, typename DV>
-        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data, const T& z, const bool show_progress) {
+        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data, const size_t& c, const bool show_progress) {
             types::vector3d_t<V> k_j;
             types::vector3d_t<T> phi_j;
             const auto mm = config.max_mode();
             const auto nx = x.size();
             const auto ny = y.size();
-            utils::progress_bar pbar(nx * ny, "Modes");
+            const auto& depth = config.receiver_depth();
+            utils::progress_bar pbar(nx * ny, "Modes", show_progress);
 
             for (size_t i = 0; i < nx; ++i) {
                 size_t m = 0;
                 for (size_t j = 0; j < ny; ++j) {
-                    _fill_data(calc_modes(config, x[i], data[i][j], z), k_j, phi_j, nx, ny, i, j, mm, m);
+                    _fill_data(calc_modes(config, x[i], data[i][j], depth.point(x[i], y[j]), c), k_j, phi_j, nx, ny, i, j, mm, m);
                     if (show_progress)
                         pbar();
                 }
@@ -319,18 +330,16 @@ namespace acstc {
         }
 
         template<typename YV, typename DV>
-        static auto _create(const config<T>& config, const YV& y, const DV& data, const T& z, const bool show_progress) {
+        static auto _create(const config<T>& config, const YV& y, const DV& data, const size_t& c, const bool show_progress) {
             types::vector2d_t<V> k_j;
             types::vector2d_t<T> phi_j;
             const auto mm = config.max_mode();
             const auto ny = y.size();
-            utils::progress_bar pbar(ny, "Modes");
+            const auto& depth = config.receiver_depth();
 
             size_t m = 0;
-            for (size_t i = 0; i < ny; ++i) {
-                _fill_data(calc_modes(config, config.x0(), data[i], z), k_j, phi_j, ny, i, mm, m);
-                if (show_progress)
-                    pbar();
+            for (const auto& i : utils::progress_bar(ny, "Modes", show_progress)) {
+                _fill_data(calc_modes(config, config.x0(), data[i], depth.point(config.x0(), y[i]), c), k_j, phi_j, ny, i, mm, m);                
             }
             return std::make_tuple(
                     utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),

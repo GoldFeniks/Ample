@@ -174,6 +174,7 @@ namespace acstc {
 
         CONFIG_DATA_FIELD(mode_subset, double)
         CONFIG_DATA_FIELD(max_mode, size_t)
+        CONFIG_DATA_FIELD(n_modes, size_t)
         CONFIG_DATA_FIELD(x0, T)
         CONFIG_DATA_FIELD(x1, T)
         CONFIG_DATA_FIELD(nx, size_t)
@@ -237,37 +238,28 @@ namespace acstc {
         }
 
         template<typename V = T>
-        auto create_modes(const T& z, const bool show_progress = false) const {
+        auto create_modes(const size_t& c = 0, const bool show_progress = false) const {
             if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create(_data["modes"], border_width(), _path);
             if (_data.count("mnx") && _data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, z, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>(), show_progress);
-            return ::acstc::modes<T, V>::create(*this, z, show_progress);
+                return ::acstc::modes<T, V>::create(*this, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>(), c, show_progress);
+            return ::acstc::modes<T, V>::create(*this, c, show_progress);
         }
 
         template<typename V = T>
-        auto create_modes(const bool show_progress = false) const {
-            return create_modes<V>(z_r(), show_progress);
-        }
-
-        template<typename V = T>
-        auto create_const_modes(const T& z, const bool show_progress = false) const {
+        auto create_const_modes(const size_t& c = 0, const bool show_progress = false) const {
             if (_data.count("modes"))
                 return __impl::modes_creator<T, V>::create_const(_data["modes"], _path);
             if (_data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, z, _data["mny"].template get<size_t>(), show_progress);
-            return ::acstc::modes<T, V>::create(*this, z, bathymetry().y().size(), show_progress);
+                return ::acstc::modes<T, V>::create(*this, _data["mny"].template get<size_t>(), c, show_progress);
+            return ::acstc::modes<T, V>::create(*this, bathymetry().y().size(), c, show_progress);
         }
 
-        template<typename V = T>
-        auto create_const_modes(const bool show_progress = false) const {
-            return create_const_modes<V>(z_r(), show_progress);
-        }
-
-        auto create_source_modes() const {
+        auto create_source_modes(const size_t& c = 0) const {
             if (_data.count("k0") && _data.count("phi_s"))
                 return std::make_tuple(k0(), phi_s());
-            auto n_m = ::acstc::modes<T>::calc_modes(*this, x0(), bathymetry().point(x0(), y_s()), z_s());
+            const auto x = T(0);
+            auto n_m = ::acstc::modes<T>::calc_modes(*this, x, bathymetry().point(x, y_s()), z_s(), c);
             types::vector1d_t<T> k0(n_m.khs.size()), phi_s(n_m.khs.size());
             for (size_t i = 0; i < k0.size(); ++i) {
                 k0[i] = n_m.khs[i];
@@ -323,6 +315,7 @@ namespace acstc {
             return {
                 { "mode_subset", -1 },
                 { "max_mode", size_t(-1) },
+                { "n_modes", size_t(0) },
                 { "ppm", size_t(2) },
                 { "ordRich", size_t(3) },
                 { "f", T(25) },
