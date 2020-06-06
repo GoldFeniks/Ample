@@ -44,6 +44,10 @@ bool operator&(const field_group& a, const field_group& b) {
     return uint64_t(a) & uint64_t(b);
 }
 
+inline bool verbose(const size_t& level) {
+    return acstc::utils::verbosity::instance().level >= level;
+}
+
 class to_string_helper {
 
 public:
@@ -745,10 +749,10 @@ int main(int argc, char* argv[]) {
         verbose_config_field_group_parameters(field_group::Rays);
 
         if (config.const_modes()) {
-            const auto [k_j, phi_j] = config.create_const_modes<types::real_t>(acstc::utils::verbosity::instance().level >= 2);
+            const auto [k_j, phi_j] = config.create_const_modes<types::real_t>(config.n_modes(), verbose(2));
             save_rays(output_filename, vm.count("binary") > 0, k_j, step);
         } else {
-            const auto [k_j, phi_j] = config.create_modes<types::real_t>(acstc::utils::verbosity::instance().level >= 2);
+            const auto [k_j, phi_j] = config.create_modes<types::real_t>(config.n_modes(), verbose(2));
             save_rays(output_filename, vm.count("binary") > 0, k_j, step);
         }
 
@@ -758,7 +762,7 @@ int main(int argc, char* argv[]) {
     if (job_type == "init") {
         verbose_config_field_group_parameters(field_group::Initial);
 
-        const auto [k0, phi_s] = config.create_source_modes();
+        const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
         const auto init = get_initial_conditions(k0, phi_s);
 
         const auto nj = k0.size();

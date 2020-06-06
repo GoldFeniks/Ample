@@ -4,6 +4,7 @@
 #include <cstddef>
 #include "dork.hpp"
 #include "utils/types.hpp"
+#include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {
@@ -107,7 +108,8 @@ namespace acstc {
                     const Arg& x0, const Arg& y0,
                     const Arg& l1, const size_t& nl,
                     const Arg& a0, const Arg& a1, const size_t& na,
-                    const FX& fx, const FY& fy, const FT& ft, const FZ& fz, size_t& j, const size_t& nj) {
+                    const FX& fx, const FY& fy, const FT& ft, const FZ& fz, size_t& j, const size_t& nj,
+                    const bool& show_progress) {
                 const auto fs = dork::rk4<Arg>(Arg(0), l1, nl)(fx, fy, ft, fz);
 
                 types::vector3d_t<Arg> rx(nj, types::vector2d_t<Arg>(na)),
@@ -115,6 +117,8 @@ namespace acstc {
 
                 const auto mesh_l = utils::mesh_1d(Arg(0), l1, nl);
                 const auto mesh_a = utils::mesh_1d(a0, a1, na);
+
+                utils::progress_bar pbar(nj * na * nl, "Rays", show_progress);
 
                 for (j = 0; j < nj; ++j)
                     for (size_t i = 0; i < na; ++i) {
@@ -124,6 +128,7 @@ namespace acstc {
                         for (const auto& [l, x, y, t, z] : solver) {
                             rx[j][i].emplace_back(x);
                             ry[j][i].emplace_back(y);
+                            pbar.next();
                         }
                     }
 
@@ -140,7 +145,8 @@ namespace acstc {
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
                 const Arg& a0, const Arg& a1, const size_t& na,
-                const utils::linear_interpolated_data_1d<Arg, Arg>& k_j) {
+                const utils::linear_interpolated_data_1d<Arg, Arg>& k_j,
+                const bool& show_progress = false) {
             types::vector1d_t<Arg> k0(k_j.size());
             for (size_t j = 0; j < k_j.size(); ++j)
                 k0[j] = k_j[j].point(y0);
@@ -165,7 +171,7 @@ namespace acstc {
                     return kd_j[j].point(y);
             };
 
-            return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size());
+            return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
         }
 
         template<typename Arg>
@@ -173,7 +179,8 @@ namespace acstc {
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
                 const Arg& a0, const Arg& a1, const size_t& na,
-                const utils::linear_interpolated_data_2d<Arg, Arg>& k_j) {
+                const utils::linear_interpolated_data_2d<Arg, Arg>& k_j,
+                const bool& show_progress = false) {
             types::vector1d_t<Arg> k0(k_j.size());
             for (size_t j = 0; j < k_j.size(); ++j)
                 k0[j] = k_j[j].point(x0, y0);
@@ -198,7 +205,7 @@ namespace acstc {
                     return kdy_j[j].point(x, y);
             };
 
-            return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size());
+            return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
         }
 
     }// namespace rays
