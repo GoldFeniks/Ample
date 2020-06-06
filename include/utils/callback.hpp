@@ -2,6 +2,7 @@
 #include <tuple>
 #include <utility>
 #include <iostream>
+#include <functional>
 #include "types.hpp"
 #include "verbosity.hpp"
 #include "progress_bar.hpp"
@@ -37,38 +38,98 @@ namespace acstc {
 
             };
 
-            template<typename T, typename DCallback, typename CCallback>
-            void ekc_callback(const T& data, const size_t k, size_t& ck, DCallback& data_callback, CCallback& count_callback) {
-                if (ck % k == 0) {
-                    data_callback(data);
-                    count_callback(ck);
-                }
-                ++ck;
+            template<typename>
+            struct _empty {};
+
+            template<typename T>
+            auto propagate(T& value, _empty<T>) {
+                return std::reference_wrapper<T>(value);
             }
+
+            template<typename T>
+            auto propagate(T& value, _empty<T&>) {
+                return std::reference_wrapper<T>(value);
+            }
+
+            template<typename T>
+            auto&& propagate(T&& value, _empty<T&&>) {
+                return value;
+            }
+
+            template<typename DCallback, typename CCallback>
+            class ekc_callback {
+
+            public:
+
+                ekc_callback(const size_t& k, DCallback&& data_callback, CCallback&& count_callback) : 
+                   _k(k), _data_callback(std::move(data_callback)), _count_callback(std::move(count_callback)) {}
+
+                template<typename T, typename D>
+                void operator()(const T& x, const D& data) {
+                    if (_ck % _k == 0) {
+                        _data_callback(x, data);
+                        _count_callback(_ck);
+                    }
+                    ++_ck;
+                }
+
+                void reset() {
+                    _ck = 0;
+                }
+
+            private:
+
+                size_t _ck = 0;
+                const size_t _k;
+                DCallback _data_callback;
+                CCallback _count_callback;
+
+            };
+
+            class progress_bar_callback {
+
+            public:
+
+                progress_bar_callback(const size_t& n, const std::string& title, const bool& enabled = true, 
+                    const progress_bar::leave_behavior& leave = progress_bar::leave_behavior::global) :
+                    _create_bar([=]() {
+                        return new progress_bar(n, title, enabled, leave);
+                    })
+                {}
+
+                ~progress_bar_callback() {
+                    if (_bar)
+                        delete _bar;
+                }
+
+                template<typename... T>
+                void operator()(const T&...) {
+                    if (!_bar)
+                        _bar = _create_bar();
+                    _bar->next();
+                }
+
+            private:
+
+                progress_bar* _bar = nullptr;
+                const std::function<progress_bar*()> _create_bar;
+
+
+            };
 
         }// namespace __impl
 
         const auto& nothing_callback() {
-            static auto callback = [](auto){};
+            static auto callback = [](const auto&...){};
             return callback;
         }
 
         //each kth call callback
         template<typename DCallback, typename CCallback>
-        auto ekc_callback(const size_t k, DCallback& data_callback, CCallback& count_callback) {
-            return [k, &data_callback, &count_callback, ck=size_t(0)](const auto& data) mutable {
-                __impl::ekc_callback(data, k, ck, data_callback, count_callback);
-            };
-        }
-
-        //each kth call callback
-        template<typename DCallback, typename CCallback>
         auto ekc_callback(const size_t k, DCallback&& data_callback, CCallback&& count_callback) {
-            return [k, ck=size_t(0), data_callback=std::forward<DCallback>(data_callback),
-                    count_callback=std::forward<CCallback>(count_callback)]
-                    (const auto& data) mutable {
-                __impl::ekc_callback(data, k, ck, data_callback, count_callback);
-            };
+            return __impl::ekc_callback(k, 
+                __impl::propagate(data_callback, __impl::_empty<DCallback>{}),
+                __impl::propagate(count_callback, __impl::_empty<CCallback>{}));
         }
 
         template<typename DCallback>
@@ -110,7 +171,7 @@ namespace acstc {
         template<typename... Callbacks>
         auto callbacks(Callbacks&... callbacks) {
             return [callbacks=std::tie(std::forward<Callbacks>(callbacks)...)]
-                    (const auto& data) mutable {
+                    (const auto& x, const auto& data) mutable {
                 __impl::caller<sizeof...(Callbacks) - 1>::call(callbacks, data);
             };
         }
@@ -118,15 +179,14 @@ namespace acstc {
         template<typename... Callbacks>
         auto callbacks(Callbacks&&... callbacks) {
             return [callbacks=std::make_tuple(std::forward<Callbacks>(callbacks)...)]
-                (const auto& data) mutable {
-                __impl::caller<sizeof...(Callbacks) - 1>::call(callbacks, data);
+                (const auto& x, const auto& data) mutable {
+                __impl::caller<sizeof...(Callbacks) - 1>::call(callbacks, x, data);
             };
         }
 
-        auto progress_bar_callback(const size_t& n, const std::string& title) {
-            return [pbar=progress_bar(n, title)](const auto&...) mutable {
-                pbar();
-            };
+        auto progress_bar_callback(const size_t& n, const std::string& title, const bool& enabled = true, 
+            const progress_bar::leave_behavior& leave = progress_bar::leave_behavior::global) {
+            return __impl::progress_bar_callback(n, title, enabled, leave);
         }
 
     }// namespace utils

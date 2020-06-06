@@ -26,4 +26,5 @@ target_link_libraries(ACOUSTIC
     nlohmann_json::nlohmann_json
     ${Boost_LIBRARIES} 
     ${PROJECT_DIR}/modules/Acoustics-at-home/binaries/libnormal_modes.a
+    fftw3
 )

@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <tuple>
 #include <cstddef>
 #include <utility>
@@ -13,6 +14,29 @@ namespace acstc {
     namespace utils {
 
         namespace __impl {
+
+            template<typename T, typename... Args>
+            class has_prepare {
+
+            private:
+
+                template<void (*)(Args&...)>
+                struct dummy;
+
+                template<typename C>
+                static char test(dummy<&C::prepare>*);
+
+                template<typename C>
+                static int  test(...);
+
+            public:
+
+                static constexpr bool value = std::is_same_v<decltype(test<T>(0)), char>;
+
+            };
+
+            template<typename T, typename... Args>
+            constexpr bool has_prepare_v = has_prepare<T, Args...>::value;
 
             template<typename T, typename C>
             auto fill_bilinear_interpolation_coefficients(const T& a, const T& b, const size_t n, const C& coords) {
@@ -156,6 +180,7 @@ namespace acstc {
 
                 interpolated_data(const Args&... args, const types::vector1d_t<data_t>& data) :
                     _common_data(std::forward<const Args>(args)...) {
+                    prepare();
                     _interpolators.reserve(data.size());
                     for (const auto& it : data)
                         _interpolators.emplace_back(std::cref(_common_data), it);
@@ -163,11 +188,13 @@ namespace acstc {
 
                 interpolated_data(const Args&... args, const data_t& data) :
                     _common_data(std::forward<const Args>(args)...) {
+                    prepare();
                     _interpolators.emplace_back(std::cref(_common_data), data);
                 }
 
                 interpolated_data(const Args&... args, types::vector1d_t<data_t>&& data) :
                     _common_data(std::forward<const Args>(args)...) {
+                    prepare();
                     _interpolators.reserve(data.size());
                     for (auto&& it : data)
                         _interpolators.emplace_back(std::cref(_common_data), std::move(it));
@@ -175,17 +202,20 @@ namespace acstc {
 
                 interpolated_data(const Args&... args, data_t&& data) :
                     _common_data(std::forward<const Args>(args)...) {
+                    prepare();
                     _interpolators.emplace_back(std::cref(_common_data), std::move(data));
                 }
 
                 interpolated_data(Args&&... args, types::vector1d_t<data_t>&& data) :
                     _common_data(std::forward<Args>(args)...) {
+                    prepare();
                     _interpolators.reserve(data.size());
                     for (auto&& it : data)
                         _interpolators.emplace_back(std::cref(_common_data), std::move(it));
                 }
 
                 interpolated_data(Args&&... args, data_t&& data) : _common_data(std::forward<Args>(args)...) {
+                    prepare();
                     _interpolators.emplace_back(std::cref(_common_data), std::move(data));
                 }
 
@@ -210,6 +240,11 @@ namespace acstc {
 
                 std::tuple<Args...> _common_data;
                 types::vector1d_t<I> _interpolators;
+
+                void prepare() {
+                    if constexpr (has_prepare_v<I, std::tuple<Args...>>)
+                        I::prepare(_common_data);
+                }
 
             };
 
@@ -468,8 +503,8 @@ namespace acstc {
                     }
                 }
 
-                line_t line(const T& x, const T& y0, const T& y1, const size_t nx) const {
-                    line_t res(nx);
+                line_t line(const T& x, const T& y0, const T& y1, const size_t ny) const {
+                    line_t res(ny);
                     line(x, y0, y1, res);
                     return res;
                 }
@@ -505,6 +540,97 @@ namespace acstc {
 
             };
 
+            template<typename T, typename V = T>
+            class nearest_neighbour_interpolator_2d : interpolator_2d<T, V> {// hopefully there's only a few points
+
+            public:
+
+                using data_t = types::vector1d_t<V>;
+                using typename interpolator_2d<T, V>::line_t;
+                using typename interpolator_2d<T, V>::field_t;
+                using args_t = std::tuple<types::vector1d_t<std::tuple<T, T>>>;
+
+                nearest_neighbour_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data) :
+                        _args(std::move(args)), _data(data) {}
+                nearest_neighbour_interpolator_2d(std::reference_wrapper<const args_t> args, data_t&& data) :
+                        _args(std::move(args)), _data(std::move(data)) {}
+
+                V point(const T& x, const T& y) const override {
+                    return nearest(x, y);
+                }
+
+                void line(const T& x, const T& y0, const T& y1, line_t& res) const override {
+                    const auto dy = (y1 - y0) / (res.size() - 1);
+                    for (size_t i = 0; i < res.size(); ++i)
+                        res[i] = nearest(x, y0 + i * dy);
+                }
+
+                line_t line(const T& x, const T& y0, const T& y1, size_t n) const {
+                    line_t res(n);
+                    line(x, y0, y1, res);
+                    return res;
+                }
+
+                void field(const T& x0, const T& x1, const T& y0, const T& y1, field_t& res) const override {
+                    const auto dx = (x1 - x0) / (res.size() - 1);
+                    const auto dy = (y1 - y0) / (res[0].size() - 1);
+                    for (size_t i = 0; i < res.size(); ++i)
+                        for (size_t j = 0; j < res[i].size(); ++j)
+                            res[i][j] = nearest(x0 + i * dx, y0 + j * dy);
+                }
+
+                field_t field(const T& x0, const T& x1, const size_t nx, const T& y0, const T& y1, const size_t ny) const {
+                    field_t res(nx, line_t(ny));
+                    field(x0, x1, y0, y1, res);
+                    return res;
+                }
+
+                inline const auto& points() const {
+                    return std::get<0>(_args.get());
+                }
+
+                inline const auto& points(const size_t& i) const {
+                    return points()[i];
+                }
+
+                inline const auto& data() const {
+                    return _data;
+                }
+
+                const auto& operator[](const size_t& i) const {
+                    return _data[i];
+                }
+
+            protected:
+
+                data_t _data;
+                std::reference_wrapper<const args_t> _args;
+
+            private:
+
+                template<typename, typename>
+                friend class __impl::interpolated_data;
+
+                static T distance(const T& x, const T& y, const std::tuple<T, T>& p) {
+                    return std::pow(x - std::get<0>(p), 2) + std::pow(y - std::get<1>(p), 2);
+                }
+
+                V nearest(const T& x, const T& y) const {
+                    size_t index = 0;
+                    const auto& points = this->points();
+                    T distance = this->distance(x, y, points[0]);
+                    for (size_t i = 1; i < points.size(); ++i) {
+                        const auto d = this->distance(x, y, points[i]);
+                        if (d < distance) {
+                            distance = d;
+                            index = i;
+                        }
+                    }
+                    return _data[index];
+                }
+
+            };
+
         }// namespace interpolators
 
         template<typename I>
@@ -518,6 +644,9 @@ namespace acstc {
 
         template<typename T, typename V = T>
         using delaunay_interpolated_data_2d = interpolated_data<interpolators::delaunay_interpolator_2d<T, V>>;
+
+        template<typename T, typename V = T>
+        using nearest_neighbour_interpolated_data_2d = interpolated_data<interpolators::nearest_neighbour_interpolator_2d<T, V>>;
 
     }// namespace utils
 

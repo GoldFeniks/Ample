@@ -55,6 +55,20 @@ namespace acstc {
                 }
             }
 
+            template<typename... T>
+            void verbose_lv(const size_t level, const T&... values) const {
+                if (level == this->level)
+                    __impl::verbose<T...>::call(values...);
+            }
+
+            template<typename... T>
+            void verboseln_lv(const size_t level, const T&... values) const {
+                if (level == this->level) {
+                    verbose_lv(level, values...);
+                    std::cout << std::endl;
+                }
+            }
+
         };
 
         template<typename... T>
@@ -65,6 +79,16 @@ namespace acstc {
         template<typename... T>
         void verboseln(const size_t level, const T&... values) {
             verbosity::instance().verboseln<T...>(level, values...);
+        }
+
+        template<typename... T>
+        void verbose_lv(const size_t level, const T&... values) {
+            verbosity::instance().verbose_lv<T...>(level, values...);
+        }
+
+        template<typename... T>
+        void verboseln_lv(const size_t level, const T&... values) {
+            verbosity::instance().verboseln_lv<T...>(level, values...);
         }
 
     }// namespace utils

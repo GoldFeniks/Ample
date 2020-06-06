@@ -43,7 +43,7 @@ namespace acstc {
             if (init.size() != mc || k_int.size() != mc || phi_int.size() != mc)
                 throw std::logic_error("Arguments init, k0, k, phi must be the same size");
 
-            types::vector2d_t<VL> ik(mc, types::vector1d_t<VL>(_ny));
+            types::vector2d_t<VL>  ik(mc, types::vector1d_t<VL>(_ny));
             types::vector1d_t<Val> ca(mc), s0(mc), bv(_ny, Val(0)), g0(mc), g1(mc), b0(mc), b1(mc), sq_k0(mc);
             types::vector2d_t<Val> cv(mc, types::vector1d_t<Val>(_ny)),
                                    cb(mc, types::vector1d_t<Val>(_ny)),
@@ -78,7 +78,7 @@ namespace acstc {
                 _fill_parameters(k0[j], ik[j].back(), ls[j], vb[j].back());
             }
 
-            callback(bv);
+            callback(_x0, bv);
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
                 types::vector1d_t<VL> nk(_ny);
@@ -123,7 +123,7 @@ namespace acstc {
                             ov[m] += phi[m] * cv[j][m] * std::exp(im * k0[j] * x);
                     }
 
-                    call(ov);
+                    call(x, ov);
                     x += _hx;
                 }
             };
@@ -186,7 +186,7 @@ namespace acstc {
                 _fill_parameters(k0[j], k[j].back(), ls[j], vb[j].back());
             }
 
-            callback(bv);
+            callback(_x0, bv);
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
                 types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
@@ -216,7 +216,7 @@ namespace acstc {
                         for (size_t m = 0; m < _ny; ++m)
                             ov[m] += phi[j][m] * cv[j][m] * std::exp(im * k0[j] * x);
                     }
-                    call(ov);
+                    call(x, ov);
                     x += _hx;
                 }
             };
@@ -315,7 +315,7 @@ namespace acstc {
 
             for (size_t i = 0; i < num_workers; ++i)
                 workers.emplace_back([&, i](){
-                    solve_func(mpw * i, i == num_workers - 1 ? mc : mpw * (i + 1), [&, i, in=size_t(0)](const auto& data) mutable {
+                    solve_func(mpw * i, i == num_workers - 1 ? mc : mpw * (i + 1), [&, i, in=size_t(0)](const auto& x, const auto& data) mutable {
                         while (true) {
                             buff_mutex[in].lock();
                             if (!done_buff[in][i])
@@ -335,7 +335,7 @@ namespace acstc {
             while (in < _nx) {
                 buff_mutex[bi].lock();
                 if (std::all_of(done_buff[bi].begin(), done_buff[bi].end(), [](const auto& val) { return val; })) {
-                    callback(ov_buff[bi]);
+                    callback(_x0 + in * _hx, ov_buff[bi]);
                     done_buff[bi].assign(num_workers, false);
                     ov_buff[bi].assign(_ny, Val(0));
                     bi = (bi + 1) % buff_size;

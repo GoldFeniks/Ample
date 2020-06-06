@@ -1,9 +1,12 @@
 #include <cmath>
 #include <chrono>
+#include <complex>
 #include <string>
 #include <cstring>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <numeric>
 #include <sstream>
 #include <iostream>
 #include <algorithm>
@@ -11,6 +14,7 @@
 #include "config.hpp"
 #include "solver.hpp"
 #include "io/writer.hpp"
+#include "utils/fft.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "nlohmann/json.hpp"
@@ -26,6 +30,8 @@ namespace po = boost::program_options;
 
 using nlohmann::json;
 using acstc::utils::verboseln;
+using acstc::utils::verboseln_lv;
+using namespace std::complex_literals;
 
 acstc::config<types::real_t> config;
 
@@ -212,7 +218,18 @@ void print_modes(std::stringstream& stream) {
     print_field<double>("Mode subset", "mode_subset", stream);
     print_field<size_t>("Points per meter over z", "ppm", stream);
     print_field<size_t>("Richardson extrapolation order", "ordRich", stream);
-    print_field<types::real_t>("Source frequency, Hz", "f", stream);
+
+    if (config.f_size() == 1)
+        stream << "    Source frequency, Hz: " << config.f() << '\n';
+    else {
+        stream << "    Source function: ";
+        if (config.f_size() <= 5)
+            print_table(std::array<const char*, 1>{"f(t)"}, config.t(),
+                std::array<std::remove_reference_t<decltype(config.source_function())>, 1>{config.source_function()}, stream);
+        else
+            print_loaded_data(data["source_function"], stream);
+    }
+
     print_field<types::real_t>("Points per meter over z", "ppm", stream);
     print_field<types::real_t>("Source depth, m", "z_s", stream);
     print_field<bool>("Complex-valued modes", "complex_modes", stream);
@@ -236,6 +253,9 @@ void print_modes(std::stringstream& stream) {
 
     const auto nm = data["max_mode"].get<size_t>();
     stream << "    Maximal number of modes: " << (nm == size_t(-1) ? "All" : helper.to_string(nm)) << ";\n";
+
+    const auto mn = data["n_modes"].get<size_t>();
+    stream << "    Required number of modes: " << (mn == size_t(-1) ? "All" : helper.to_string(mn)) << ";\n";
 
     print_bathymetry(stream);
 
@@ -295,7 +315,7 @@ void print_initial_conditions(std::stringstream& stream) {
         return;
     }
     else
-        throw new std::logic_error(std::string("Unknown initial conditions type: ") + type);
+        throw std::logic_error(std::string("Unknown initial conditions type: ") + type);
 
     stream << ";\n\n";
 }
@@ -305,8 +325,14 @@ void print_solver(std::stringstream& stream) {
 
     stream << "Solver parameters:\n";
 
-    print_field<types::real_t>("Receiver depth", "z_r", stream);
-    print_field<types::real_t>("Source y coordinate", "ppm", stream);
+    const auto& receivers = config.receiver_depth();
+    stream << "    Receivers:\n";
+    for (size_t i = 0; i < std::min(size_t(5), receivers.data().size()); ++i) {
+        const auto& [x, y] = receivers.points()[i];
+        stream << "        [ " << x << ", " << y << ", " << receivers.data()[i] << " ];\n";
+    }
+
+    print_field<types::real_t>("Source z coordinate", "y_s", stream);
     print_field<size_t>("Width of smooth border over edges", "border_width", stream);
 
     const auto pn = data["past_n"].get<size_t>();
@@ -324,7 +350,7 @@ void print_solver(std::stringstream& stream) {
 }
 
 void verbose_config_field_group_parameters(const field_group& group) {
-    if (acstc::utils::verbosity::instance().level < 3)
+    if (!verbose(3))
         return;
 
     std::stringstream stream;
@@ -357,7 +383,7 @@ auto pass_tapering(const F& func) {
     if (type == "angled")
         return func(acstc::angled_tapering(vl, vr));
 
-    throw new std::logic_error(std::string("Unknown tapering type: ") + type);
+    throw std::logic_error(std::string("Unknown tapering type: ") + type);
 }
 
 template<typename KS, typename PS>
@@ -373,7 +399,7 @@ auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s) {
-    auto [k_j, phi_j] = config.create_const_modes<types::real_t>(acstc::utils::verbosity::instance().level >= 2);
+    auto [k_j, phi_j] = config.create_const_modes<types::real_t>(config.n_modes(), verbose(2));
 
     if (k_j.size() > k0.size())
         k_j.erase_last(k_j.size() - k0.size());
@@ -440,7 +466,7 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
             }
         );
 
-    throw new std::logic_error(std::string("Unknown initial conditions type: ") + init);
+    throw std::logic_error(std::string("Unknown initial conditions type: ") + init);
 }
 
 template<typename KS, typename PS, typename KJ>
@@ -466,13 +492,14 @@ auto get_initial_conditions(const KS& k0, const PS& phi_s) {
 template<typename F>
 auto add_verbosity(const size_t& report, const size_t& n, F& function) {
     return [&](auto&& writer) mutable {
-        const auto start = std::chrono::system_clock::now();
-        if (acstc::utils::verbosity::instance().level >= 2)
-            function(acstc::utils::callbacks(writer, acstc::utils::progress_bar_callback(n, "Solution")));
-        else
+        if (verbose(2))
+            function(acstc::utils::callbacks(writer, acstc::utils::progress_bar_callback(n, "Solution", true)));
+        else {
+            const auto start = std::chrono::system_clock::now();
             function(writer);
-        const auto end = std::chrono::system_clock::now();
-        verboseln(1, "Elapsed time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+            const auto end = std::chrono::system_clock::now();
+            verboseln(1, "Elapsed time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+        }
         return;
     };
 }
@@ -484,23 +511,25 @@ auto add_writer(const std::string& filename,
         const auto xs = acstc::utils::mesh_1d(config.x0(), config.x1(), (config.nx() - 1) / step + 1);
         const auto ys = acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny());
         if (binary) {
+            const auto nf = static_cast<const uint32_t>(config.f_size());
             const auto nx = static_cast<const uint32_t>(xs.size());
             const auto ny = static_cast<const uint32_t>(ys.size());
             acstc::utils::binary_writer<types::real_t> writer(filename);
+            writer.stream().write(reinterpret_cast<const char*>(&nf), sizeof(nf));
             writer.stream().write(reinterpret_cast<const char*>(&nx), sizeof(nx));
             writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
             writer.write(xs);
             writer.write(ys);
-            function(acstc::utils::ekc_callback(step, [&](const auto data) {
+            function(acstc::utils::ekc_callback(step, [&](const auto& x, const auto& data) {
                 writer.write(reinterpret_cast<const types::real_t*>(data.data()), ny * 2);
             }));
             return;
         }
         acstc::utils::text_writer<types::real_t> writer(filename);
-        writer.stream() << xs.size() << ' ' << ys.size() << '\n';
+        writer.stream() << config.f_size() << ' ' << xs.size() << ' ' << ys.size() << '\n';
         writer.write(xs);
         writer.write(ys);
-        function(acstc::utils::ekc_callback(step, [&](const auto data) {
+        function(acstc::utils::ekc_callback(step, [&](const auto& x, const auto& data) {
             writer.write(reinterpret_cast<const types::real_t*>(data.data()), ys.size() * 2);
         }));
     };
@@ -511,9 +540,9 @@ auto add_modes(const size_t mn, F1& function, F2& function_const) {
     return [&, mn](auto&& callback) mutable {
         if (config.const_modes()) {
             const auto start = std::chrono::system_clock::now();
-            auto [k_j, phi_j] = config.create_const_modes<T>(acstc::utils::verbosity::instance().level >= 2);
+            auto [k_j, phi_j] = config.create_const_modes<T>(mn, verbose(2));
             const auto end = std::chrono::system_clock::now();
-            verboseln(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+            verboseln_lv(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
 
             if (k_j.size() > mn) {
                 k_j.erase_last(k_j.size() - mn);
@@ -522,10 +551,12 @@ auto add_modes(const size_t mn, F1& function, F2& function_const) {
             function_const(k_j, phi_j, callback);
             return;
         }
+
         const auto start = std::chrono::system_clock::now();
-        auto [k_j, phi_j] = config.create_modes<T>(acstc::utils::verbosity::instance().level >= 2);
+        auto [k_j, phi_j] = config.create_modes<T>(mn, verbose(2));
         const auto end = std::chrono::system_clock::now();
-        verboseln(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+        verboseln_lv(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+
         if (k_j.size() > mn) {
             k_j.erase_last(k_j.size() - mn);
             phi_j.erase_last(phi_j.size() - mn);
@@ -564,7 +595,7 @@ void write_modes(const KV& k_j, const PV& phi_j, W& writer, const WR& wrapper) {
 template<typename T, typename W>
 void save_modes(const std::string& filename, const bool binary, const W& wrapper) {
     if (config.const_modes()) {
-        const auto [k_j, phi_j] = config.create_const_modes<T>(acstc::utils::verbosity::instance().level >= 2);
+        const auto [k_j, phi_j] = config.create_const_modes<T>(config.n_modes(), acstc::utils::verbosity::instance().level >= 2);
         const auto& ys = k_j.template get<0>();
         if (binary) {
             const auto ny = static_cast<const uint32_t>(ys.size());
@@ -582,7 +613,7 @@ void save_modes(const std::string& filename, const bool binary, const W& wrapper
         write_modes(k_j, phi_j, writer, wrapper);
         return;
     }
-    const auto [k_j, phi_j] = config.create_modes<T>(acstc::utils::verbosity::instance().level >= 2);
+    const auto [k_j, phi_j] = config.create_modes<T>(config.n_modes(), acstc::utils::verbosity::instance().level >= 2);
     const auto& xs = k_j.template get<0>();
     const auto& ys = k_j.template get<1>();
     if (binary) {
@@ -624,12 +655,12 @@ void write_rays(const XS& xs, const YS& ys, const RX& rx, const RY& ry, const si
 
 template<typename KJ>
 void save_rays(const std::string& filename, const bool binary, const KJ& k_j, const size_t& k) {
-    const auto na = config.na();
-    const auto nl = config.nl();
-    const auto nm = k_j.size();
+    const auto na = static_cast<uint32_t>(config.na());
+    const auto nl = static_cast<uint32_t>(config.nl());
+    const auto nm = static_cast<uint32_t>(k_j.size());
 
     const auto [rx, ry] = acstc::rays::compute(
-        config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j);
+        config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, verbose(2));
 
     const auto& as = rx.template get<0>();
     const auto& ls = rx.template get<1>();
@@ -643,7 +674,7 @@ void save_rays(const std::string& filename, const bool binary, const KJ& k_j, co
         return;
     }
     acstc::utils::text_writer<types::real_t> writer(filename);
-    writer.stream() << as.size() << ' ' << cl << ' ' << nm << '\n';
+    writer.stream() << na << ' ' << cl << ' ' << nm << '\n';
     write_rays(as, ls, rx, ry, nm, k, writer);
 }
 
@@ -651,6 +682,31 @@ template<typename V, typename W>
 void write_conditions(const V& values, const size_t& size, W& writer) {
     for (const auto& it : values)
         writer.write(reinterpret_cast<const types::real_t*>(it.data()), 2 * size);
+}
+
+template<typename W>
+void write_impulse(const types::vector1d_t<types::real_t>& tau,
+    const types::vector2d_t<types::real_t>& impulse, W&& writer) {
+    writer.write(config.t());
+    writer.write(tau);
+    for (const auto& it : impulse)
+        writer.write(it);
+}
+
+void save_impulse(const std::string& filename, const types::vector1d_t<types::real_t>& tau,
+                  const types::vector2d_t<types::real_t>& impulse, const bool& binary) {
+    const auto nr = static_cast<uint32_t>(tau.size());
+    const auto nt = static_cast<uint32_t>(impulse[0].size());
+    if (binary) {
+        acstc::utils::binary_writer<types::real_t> writer(filename);
+        writer.stream().write(reinterpret_cast<const char*>(&nr), sizeof(nr));
+        writer.stream().write(reinterpret_cast<const char*>(&nt), sizeof(nt));
+        write_impulse(tau, impulse, writer);
+        return;
+    }
+    acstc::utils::text_writer<types::real_t> writer(filename);
+    writer.stream() << nr << ' ' << nt << '\n';
+    write_impulse(tau, impulse, writer);
 }
 
 int main(int argc, char* argv[]) {
@@ -700,15 +756,92 @@ int main(int argc, char* argv[]) {
 
     if (job_type == "solution") {
         verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
+        acstc::utils::progress_bar::leave = true;
+
+        const auto nf = config.f_size();
+        acstc::solver solver(config);
+        types::vector1d_t<types::real_t> k0, phi_s;
+
+        auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+            solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
+        };
+
+        auto with_solver_const = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+            solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+        };
+
+        auto with_initial_conditions = add_initial_conditions(k0, phi_s, with_solver);
+        auto with_initial_conditions_const = add_initial_conditions(k0, phi_s, with_solver_const);
+
+        auto function = [&](auto&& writer) {
+            acstc::utils::progress_bar pbar(nf, "Frequency", verbose(2), acstc::utils::progress_bar::leave_behavior::stay);
+
+            auto execute_function = [&](auto&& with_solver) {
+                add_verbosity(report, config.nx(), with_solver)(writer);
+            };
+
+            for (const auto& fi : pbar) {
+                config.f_index(fi);
+                std::tie(k0, phi_s) = config.create_source_modes(config.n_modes());
+
+                if (config.complex_modes())
+                    execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+                else
+                    execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+            }
+
+        };
+
+        add_writer(output_filename, vm.count("binary") > 0, step, function)();
+        return 0;
+    }
+
+    if (job_type == "impulse") {
+        verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
+        acstc::utils::progress_bar::leave = true;
+
+        acstc::utils::real_fft<types::real_t, types::complex_t> fft(config.f_size());
+        std::memset(fft.backward_data(), 0, sizeof(types::complex_t) * fft.size());
+        std::memcpy(fft.forward_data(), config.source_function().data(), fft.size() * sizeof(types::real_t));
+        fft.execute_forward();
+        std::transform(std::as_const(fft).backward_data(), fft.backward_data_end(), fft.backward_data(), [](const auto& v) { return std::conj(v); });
+
+        config.f_mode(config.mode::impulse);
+        const auto nf = config.f_size();
 
         acstc::solver solver(config);
 
-        const auto [k0, phi_s] = config.create_source_modes();
+        const auto& depth = config.receiver_depth();
+        const auto nr = depth.points().size();
 
-        auto execute_function = [&](auto&& with_solver) {
-            auto with_verbosity = add_verbosity(report, config.nx(), with_solver);
-            auto with_writer = add_writer(output_filename, vm.count("binary") > 0, step, with_verbosity);
-            with_writer();
+        types::vector1d_t<types::real_t> k0, phi_s;
+        types::vector2d_t<types::complex_t> result(nr, types::vector1d_t<types::complex_t>(nf, types::real_t(0)));
+
+        types::vector1d_t<size_t> ix(nr);
+        std::iota(ix.begin(), ix.end(), 0);
+        std::sort(ix.begin(), ix.end(), [&](const auto& a, const auto& b) { 
+            return std::get<0>(depth.points(a)) < std::get<0>(depth.points(b));
+        });        
+
+        const auto iy = acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny());
+
+        size_t li = 0;
+        acstc::utils::progress_bar pbar(nf, "Impulse", verbose(2), acstc::utils::progress_bar::leave_behavior::stay);
+
+        auto execute_function = [&, &fi=pbar.current()](auto&& with_solver) {
+            with_solver(acstc::utils::callbacks(
+                acstc::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)), 
+                [&, last=types::vector1d_t<types::complex_t>(), last_x=double(0)](const auto& mx, const auto& data) mutable {
+                    const auto x = mx + config.x0();
+                    for (; last.size() && li < ix.size() && std::get<0>(depth.points(ix[li])) <= x; ++li) {
+                        const auto& [px, py] = depth.points(ix[li]);
+                        const auto& [ya, yb] = acstc::utils::find_indices(iy, py);
+                        result[ix[li]][fi] = acstc::utils::__impl::linear_interpolation::field_point(
+                            last[ya], last[yb], data[ya], data[yb], last_x, x, iy[ya], iy[yb], px, py) * fft.backward_data(fi);
+                    }
+                    last_x = x;
+                    last.assign(data.begin(), data.end());
+                }));
         };
 
         auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
@@ -722,10 +855,57 @@ int main(int argc, char* argv[]) {
         auto with_initial_conditions = add_initial_conditions(k0, phi_s, with_solver);
         auto with_initial_conditions_const = add_initial_conditions(k0, phi_s, with_solver_const);
 
-        if (config.complex_modes())
-            execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
-        else
-            execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+        const auto max = std::abs(*std::max_element(std::as_const(fft).backward_data(), fft.backward_data_end(), 
+            [](const auto& a, const auto& b) {
+                return std::abs(a) < std::abs(b);
+            }
+        ));
+
+        for (const auto& fi : pbar) {
+            li = 0;
+            config.f_index(fi);
+
+            if (std::abs(fft.backward_data(fi)) < max * config.tolerance())
+                continue;
+
+            std::tie(k0, phi_s) = config.create_source_modes(0);
+
+            if (config.complex_modes())
+                execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+            else
+                execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+        }
+
+        const auto h = config.bathymetry().point(0, config.y_s());
+        const auto cs = config.hydrology().line(0, 0, h, static_cast<size_t>(h));
+        const auto cm = std::max({
+            *std::max_element(cs.begin(), cs.end()), 
+            *std::max_element(config.bottom_c1s().begin(), config.bottom_c1s().end()),
+            *std::max_element(config.bottom_c2s().begin(), config.bottom_c2s().end())
+        });
+
+        auto omeg = acstc::utils::mesh_1d(0., 1 / config.dt(), fft.size());
+        std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
+
+        types::vector1d_t<types::real_t> tau(nr);
+        types::vector2d_t<types::real_t> impulse(nr, types::vector1d_t<types::real_t>(fft.size()));
+
+        for (size_t i = 0; i < result.size(); ++i) {
+            const auto d = tau[i] = std::hypot(std::get<0>(depth.points(i)), std::get<1>(depth.points(i))) / cm;
+
+            auto zip = acstc::utils::zip(result[i], omeg);
+            std::transform(zip.begin(), zip.end(), fft.backward_data(), 
+                [&](const auto& v) {
+                    return std::conj(std::get<0>(v) * std::exp(-1i * d * std::get<1>(v)));
+                }
+            );                
+
+            fft.execute_backward().normalize_forward();
+            std::memcpy(impulse[i].data(), fft.forward_data(), fft.size() * sizeof(*fft.forward_data()));
+        }
+
+        save_impulse(output_filename, tau, impulse, vm.count("binary") > 0);
+
         return 0;
     }
     
