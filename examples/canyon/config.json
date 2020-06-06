@@ -1,18 +1,27 @@
 {
-    "f": 150,
+    "source_function": 150,
     "ppm": 10,
     "y0": -3000,
     "y1": 3000,
     "ny": 6001,
     "x1": 10000,
     "nx": 10001,
-    "z_r": 10,
     "z_s": 10,
+    "receivers": [
+        "values",
+        [
+            [5000,  -3000,  10],
+            [0,         0,  10],
+            [5000,   3000,  10],
+            [10000,     0,  10]
+        ]
+    ],
     "bottom_rho": [2],
     "bottom_c1s": [1800],
     "bottom_c2s": [1800],
     "bathymetry": [
         "text_file",
         "bathymetry.txt"
-    ]
+    ],
+    "init": "green"
 }
