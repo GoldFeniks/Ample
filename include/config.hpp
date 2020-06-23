@@ -140,13 +140,17 @@ namespace acstc {
         return _cache[#field]->template cast<type>().value;                              \
     }                                                                                    \
     void field(const type& value) {                                                      \
-        if (const auto it = _cache.find(#field); it != _cache.end())                     \
+        if (const auto it = _cache.find(#field); it != _cache.end()) {                   \
+            delete *it;                                                                  \
             _cache.erase(it);                                                            \
+        }                                                                                \
         _data[#field] = value;                                                           \
     }                                                                                    \
     void field(type&& value) {                                                           \
-        if (const auto it = _cache.find(#field); it != _cache.end())                     \
+        if (const auto it = _cache.find(#field); it != _cache.end()) {                   \
+            delete *it;                                                                  \
             _cache.erase(it);                                                            \
+        }                                                                                \
         _data[#field] = std::move(value);                                                \
     }
 

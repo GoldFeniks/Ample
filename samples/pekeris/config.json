@@ -7,8 +7,13 @@
     "x1": 15000,
     "nx": 15001,
     "mny": 2,
-    "y_r": 30,
-    "y_s": 30,
+    "z_s": 30,
+    "receivers": [
+        "values",
+        [
+            [0, 0, 30]
+        ]
+    ],
     "bathymetry": [
         "values",
         {

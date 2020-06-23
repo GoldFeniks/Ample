@@ -1,0 +1,412 @@
+\documentclass[12pt]{extarticle}
+\usepackage[a4paper,left=1cm,right=1cm,top=2cm,bottom=2cm]{geometry}
+
+\usepackage{polyglossia}
+\setmainlanguage{english}
+
+\usepackage{fontspec}
+\setmainfont{Lucida Grande}
+\setsansfont{Lucida Sans}
+\setmonofont{Lucida Console}
+
+\usepackage{setspace}
+\setstretch{1.25}
+
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{%
+    colorlinks=true,%
+    urlcolor=blue,%
+    urlbordercolor=blue,%
+    linkcolor=blue,%
+    linkbordercolor=blue%
+}
+
+\makeatletter
+\Hy@AtBeginDocument{%
+    \def\@pdfborder{0 0 1}
+    \def\@pdfborderstyle{/S/U/W 1}
+}
+\makeatother
+
+\usepackage{minted}
+\usepackage{mdframed}
+\surroundwithmdframed{minted}
+\mdfsetup{backgroundcolor=gray!10}
+
+\usepackage{amsmath}
+\usepackage{multicol}
+
+\newcommand{\code}[1]{\colorbox{gray!10}{\mintinline{bash}{#1}}}
+
+\renewcommand{\arraystretch}{1.75}
+
+\begin{document}
+    \centerline{\bfseries\LARGE Acoustic}
+    \bigskip
+    Wide-anlge mode parabolic equation (WAMPE) solver for Helmholtz equation.
+    \section{Getting started}
+        \subsection{Requirements}
+            The following is required to build Acoustic from scratch
+            \begin{itemize}
+                \item C++ compiler with C++17 support (\href{https://gcc.gnu.org/}{gcc} is recommended)
+                \item \href{https://cmake.org/}{CMake}
+                \item \href{https://www.alglib.net/}{ALGLIB}
+                \item \href{https://www.boost.org/}{BOOST C++ Libraries}
+                \item \href{https://github.com/nlohmann/json}{nlohmann::json}
+                \item \href{http://www.fftw.org/}{fftw3}
+                \item Included as git submodules
+                \begin{itemize}
+                    \item\href{https://github.com/Nauchnik/Acoustics-at-home/}{Acoustics-at-home}
+                    \item\href{https://github.com/GoldFeniks/DORK}{DORK}
+                    \item\href{https://github.com/GoldFeniks/delaunay}{delaunay}
+                \end{itemize}
+            \end{itemize}
+        \subsection{Building}
+        \par You can build ACOUSTIC with CMake as follows
+        \begin{minted}{bash}
+$ cd build/cmake
+$ mkdir ACOUSTIC && cd ACOUSTIC
+$ cmake -DCMAKE_BUILD_TYPE=Release ..
+        \end{minted}
+    \section{Usage}
+        Solver utilizes command line interface as follows
+        \begin{minted}{bash}
+$ ACOUSTIC [task] [[option1] [option2] ...]
+        \end{minted}
+        \subsection{Tasks}
+            \par Currently the following tasks are supported
+            \begin{itemize}
+                \item\code{solution (default)}\qquad Compute WAMPE solution
+                \item\code{impulse}\qquad Compute acoustic impulse at receivers
+                \item\code{modes}\qquad Compute wavenumbers and modal functions
+                \item\code{rays}\qquad Compute acoustic rays
+                \item\code{init}\qquad Compute initial conditions
+            \end{itemize}
+        \subsection{Options}
+            \par Currently the following options are supported
+            \subsubsection{General options}
+                \begin{itemize}
+                    \item\code{-h [ --help ]}\qquad Print help message
+                    \item\code{-v [ --verbosity ] arg}\qquad Set verbosity level to \texttt{arg}. The following values are supported (bigger values include all previous)
+                        \begin{itemize}
+                            \item\code{0} nothing (default value)
+                            \item\code{1} show execution time
+                            \item\code{2} show progress bar
+                            \item\code{3} print configuration information
+                        \end{itemize}
+                   \item\code{-r [ --report ] k}\qquad Only affects \code{solution} task. If verbosity level > 0 report every \code{k} computed rows. Prints nothing if set to \code{0} (default)
+                   \item\code{-c [ --config ] arg}\qquad Specifies path to configuration file. Default is \code{config.json}
+                \end{itemize}
+            \subsubsection{Output options}
+                \begin{itemize}
+                    \item\code{-o [ --output ] filename}\qquad Specifies path to output file. Default is \code{output.txt}
+                    \item\code{-s [ --step ] k}\qquad Output every \code{k}-th computed row. Default is \code{100}
+                    \item\code{--binary} Switches to binary output
+                \end{itemize}
+            \subsubsection{Computational options}
+                \begin{itemize}
+                    \item\code{-w [ --workers ] n}\qquad Sets the number of threads for computation. Only affects \code{solution} and \code{impulse} tasks. Be default uses one thread
+                    \item\code{-b [ --buff ] arg}\qquad Sets buffer size for multithreaded computations. Default is \code{100} 
+                \end{itemize}
+    \section{Configuration file}
+        \par The configuration file is stored in JSON format with any of the following fields
+        \subsection{General format}
+            \par Real valued data is specified as one floating point value. Complex data is stored as two consecutive floating point values
+        \subsection{Binary data types}
+            \begin{itemize}
+                \item\code{uint32}\qquad Unsigned 32-bit integer
+                \item\code{double}\qquad IEEE 754 double value
+                \item\code{complex}\qquad Two \code{double values}
+            \end{itemize}
+        \subsection{\label{sec:in-file}In-file data}
+            \par Data stored in a file can be specified as follows
+            \subsubsection{Text file}
+                \begin{minted}{json}
+{
+    "field": [
+        "text_file",
+        "filename"
+    ]
+}
+                \end{minted}
+            \newpage
+            \subsubsection{Binary file}
+                \begin{minted}{json}
+{
+    "field": [
+        "binary_file",
+        "filename"
+    ]
+}
+                \end{minted}
+        \subsection{Table data\label{sec:table_data}}
+            \subsubsection{Text data}
+                \par The first row and column are coordinates values. The first coordinate follows columns, the second --- rows. Values should be (but are not required to) separated with spaces
+                \begin{minted}{text}
+0    y0 ...  yM
+x0  v00 ... v0M
+... ... ... ...
+xN  vN0 ... vNM
+                \end{minted}
+            \subsubsection{Binary data}
+                \par The binary table data is stored as follows
+                \begin{table}[h]
+                    \centering
+                    \begin{tabular}{|c|l|l|}
+                        \hline
+                        \textbf{Type} & \multicolumn{1}{l|}{\textbf{Length}} & \textbf{Description}\\
+                        \hline
+                        \code{uint32} & \code{1} & Unsigned number \code{N}\\
+                        \hline
+                        \code{uint32} & \code{1} & Unsigned number \code{M}\\
+                        \hline
+                        \code{double} & \code{N} & First coordinate values\\
+                        \hline
+                        \code{double} & \code{M} & Second coordinate values\\
+                        \hline
+                        \code{double} & \code{NM} & Data values\\
+                        \hline
+                    \end{tabular}
+                \end{table}
+            \newpage
+            \subsubsection{\label{sec:in-place}In-place data}
+                \par Table data can be specified directly in a configuration file. \code{x}, \code{y} are first and second coordinate names respectively 
+                \begin{minted}{json}
+{
+    "field": [
+        "values",
+        {
+            "x": [],
+            "y": [],
+            "values": [ [], [], ]
+        }
+    ]
+}
+                \end{minted}
+        \subsection{Floating-point fields}
+            \begin{itemize}
+                \item\code{"mode_subset"}\qquad Value in range \code{[-1, 1]}, used to truncate computed modes
+                \item\code{"x0", "x1"}\qquad Domain border over \code{x} coordinate. \code{x0} is only used for ray starters otherwise is \code{0}
+                \item\code{"y0", "y1"}\qquad Domain borders over \code{y} coordinate
+                \item\code{"y_s", "z_s"}\qquad \code{y} and \code{z} coordinates of the source
+                \item\code{"tolerance"}\qquad For impulse computation values less than \code{tolerance * max(spectre)} are skipped
+                \item\code{"a0", "a1"}\qquad Min and max radian angles used for ray starters
+                \item\code{"l0", "l1"}\qquad Min and max natural parameters used for ray starter
+            \end{itemize}
+        \subsection{Integer fields}
+            \begin{itemize}
+                \item\code{"max_mode"}\qquad Maximal number number of modes to use (-1 uses as many as there are)
+                \item\code{"n_modes"}\qquad Use this many modes (\code{"max_mode"} still takes effect)
+                \item\code{"nx", "ny"}\qquad Number of points over \code{x} and \code{y} coordinates. Only affects \code{solution} and \code{impulse} tasks
+                \item\code{"ppm"}\qquad Number of points for modes computation
+                \item\code{"mnx", "mny"}\qquad Number of points over \code{x} and \code{y} coordinates for modes computation
+                \item\code{"ordRich"}\qquad Order of Richardson extrapolation
+                \item\code{"n_layers"}\qquad Number of water layers
+                \item\code{"past_n"}\qquad History length for transparent boundary conditions
+                \item\code{"border_width"}\qquad Width of smoothed areas over left and rights domain borders. Should be less than \code{ny / 2}
+                \item\code{"na"}\qquad Number of angular point for ray starters
+                \item\code{"nl"}\qquad Number of natural parameter points for ray starter
+            \end{itemize}
+        \subsection{Boolean fields}
+            \begin{itemize}
+                \item\code{"complex_modes"}\qquad Uses complex-valued modes (accounts for attenuation)
+                \item\code{"const_modes"}\qquad Modes are assumed to be \code{x}-independent
+                \item\code{"additive_depth"}\qquad Add bottom layer depths instead of setting it
+            \end{itemize}
+        \subsection{Array fields}
+            \par All following fields are real-valued
+            \begin{itemize}
+                \item\code{"betas"}\qquad Attenuation coefficients for \textbf{all} layers (water and bottom)
+                \item\code{"bottom_layers"}\qquad Depths of bottom layers
+                \item\code{"bottom_rhos"}\qquad Density of bottom layers
+                \item\code{"bottom_c1s", "bottom_c2s"}\qquad Sound speed at the top and bottom of each bottom layer
+                \item\code{"k0", "phi_s"}\qquad Wavenumbers and modal functions of the source. Both fields must be present to take effect
+            \end{itemize}
+        \subsection{Bathymetry}
+            \par \code{"bathymentry"} specifies bottom depth of the domain and is given as \nameref{sec:table_data}. The coordinates names are \code{"x"} and \code{"y"}
+        \subsection{Hydrolody}
+            \par \code{"hydrology"} specifies sound speed in water over \code{"x"} and \code{"z"} coordinates as \nameref{sec:table_data}. Missing values can be specified as \code{-1}
+        \subsection{Modes}
+            \par \code{"modes"} is used to explicitly pass wavenumbers and modal functions to be used during computation.
+            \subsubsection{In-file}
+                \par Modal data can be specified as \nameref{sec:in-file} in either text or binary format
+                \begin{itemize}
+                    \item\code{N} --- the number of points over \code{x},
+                    \item\code{M} --- the number of points over \code{y},
+                    \item\code{K} --- the number of modes,
+                    \item\code{k} --- wavenumber value,
+                    \item\code{p} --- modal function value
+                \end{itemize}
+                \paragraph{\code{x}-independent}~\\
+                    \par For \code{x}-independent modes the following format is used
+                    \begin{minted}{bash}
+M K
+y0 ... yM
+k00 ... k0M
+... ... ...
+kK0 ... kKM
+p00 ... p0M
+... ... ...
+pK0 ... pKM
+                    \end{minted}
+                \paragraph{\code{x}-dependent}~\\
+                    \par For \code{x}-dependent modes the following format is used
+                    \begin{minted}{bash}
+N M K
+x0 ... xN
+y0 ... yN
+k000 ... k00M
+k100 ... k10M
+.... ... ....
+kN0K ... kNMK
+p000 ... p00M
+.... ... ....
+pN0K ... pNMK
+                    \end{minted}
+            \subsubsection{In-place}
+                \par Modal data can also be specified as \nameref{sec:in-place}. For \code{x}-independent modes \code{"y"} can be omitted, \code{"k"} and \code{"phi"} are two-dimensional
+                \begin{minted}{json}
+{
+    "modes": [
+        "values",
+        {
+            "x": [],
+            "y": [],
+            "k": [ [ [], [], ], [], ],
+            "phi": [ [ [], [], ], [], ]
+        }
+    ]
+}
+                \end{minted}
+        \subsection{Receivers data}
+            \par Receivers can be specified as \nameref{sec:in-file} or \nameref{sec:in-place} using \code{"receivers"} key as an array of tuples of three real values: \code{x}, \code{y} and \code{z} coordinates of the receiver. The first value of binary data must be \code{uint32} --- the number of receivers, text data must only contain coordinates.
+        \subsection{Initial values}
+            \par Initial data is specified using the \code{"init"} key. Currently \code{"green"}, \code{"gauss"}, \code{"ray_simple"} and \code{"ray"} values are supported
+            \subsubsection{Green}
+                \par The standard Greene starter
+                \begin{equation*}
+                    \mathcal{A}_j\left(0, y\right)=\frac{\varphi_j\left(z_s\right)}{2\sqrt{\pi}}\left(1.4467-0.8402k_{j,0}^2\left(y-y_s\right)^2\right)e^{-\frac{k_{j,0}^2\left(y-y_s\right)}{1.5256}}
+                \end{equation*}
+            \subsubsection{Gauss}
+                \par The standard Gauss starter
+                \begin{equation*}
+                    \mathcal{A}_j\left(0, y\right)=\frac{\varphi_j\left(z_s\right)}{2\sqrt{\pi}}e^{-k_{j,0}^2\left(y-y_s\right)}
+                \end{equation*}
+            \subsubsection{Ray starters}
+                \par Computes initial data using ray theory at \code{"x0"}. For \code{"ray_simple"} homogeneous medium is assumed and only source modes are used. For \code{"ray"} actual modes are used either dependent on \code{x} or not based on respective configuration parameter
+        \subsection{Tapering}
+            \par \code{"tapering"} is used to smooth ray starters edges.
+            \begin{minted}{json}
+{
+    "tapering": {
+        "type": {
+            "value": 0,
+            "left": 0,
+            "right": 0
+        }
+    }
+}
+            \end{minted}
+            The \code{"type"} can either be \code{"percentage"} or \code{"angled"}, and either \code{"value"} or both \code{"left"} and \code{"right"} must be present meaning percentage or angle range to be smoothed respectively
+        \subsection{Coefficients}
+            \par \code{"coefficients} for square root operator approximation can be specified as one of the following
+            \begin{multicols}{2}
+                \begin{minted}{json}
+{
+    "coefficients": [
+        "pade"
+    ]
+}
+                \end{minted}
+                \columnbreak
+                \begin{minted}{json}
+{
+    "coefficients": [
+        "abs",
+        {
+            "a": 0,
+            "b": 0,
+            "c": 0
+        }
+    ]
+}
+                \end{minted}
+            \end{multicols}
+            \code{"pade"} being $a=1, b=0.75, c=0.25$
+        \subsection{Default configuration}
+            \par By default the following configuration is used and new values are either replace the old ones or added
+            \begin{minted}{json}
+{
+    "mode_subset": -1,
+    "max_mode": -1,
+    "n_modes": 0,
+    "ppm": 2,
+    "ordRich": 3,
+    "source_function": 25,
+    "z_s": 100,
+    "y_s": 0,
+    "receivers": [
+        "values",
+        [
+            [0, 0, 30]
+        ]
+    ],
+    "n_layers": 1,
+    "bottom_layers": [500],
+    "bottom_c1s": [1700],
+    "bottom_c2s": [1700],
+    "bottom_rhos": [1.5],
+    "betas": [0, 0.5],
+    "complex_modes": true,
+    "const_modes": true,
+    "additive_depth": false,
+    "past_n": 0,
+    "border_width": 10,
+    "bathymetry": [
+        "values",
+        {
+            "x": [0, 1],
+            "y": [0, 1],
+            "values": [
+                [200, 200],
+                [200, 200]
+            ]
+        }
+    ],
+    "hydrology": [
+        "values",
+        {
+            "x": [0, 1],
+            "z": [0, 1],
+            "values": [
+                [1500, 1500],
+                [1500, 1500]
+            ]
+        }
+    ],
+    "x0": 0,
+    "x1": 15000,
+    "nx": 15001,
+    "y0": -4000,
+    "y1": 4000,
+    "ny": 8001,
+    "coefficients": [
+        "pade"
+    ],
+    "a0": -0.7854,
+    "a1":  0.7854,
+    "na": 90,
+    "l0": 0,
+    "l1": 4000,
+    "nl": 4001,
+    "init": "green",
+    "tapering": {
+        "angled": {
+            "value": 0.1
+        }
+    },
+    "tolerance": 0.02
+}
+            \end{minted}
+\end{document}
