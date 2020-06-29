@@ -710,8 +710,9 @@ void save_impulse(const std::string& filename, const types::vector1d_t<types::re
 }
 
 int main(int argc, char* argv[]) {
-    po::positional_options_description positional;
-    positional.add("job_type", 1);
+    try {
+        po::positional_options_description positional;
+        positional.add("job_type", 1);
 
     po::options_description generic("Generic options");
     size_t report;
@@ -797,17 +798,17 @@ int main(int argc, char* argv[]) {
     }
 
     if (job_type == "impulse") {
-        verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
-        acstc::utils::progress_bar::leave = true;
+            verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
+            acstc::utils::progress_bar::leave = true;
 
-        acstc::utils::real_fft<types::real_t, types::complex_t> fft(config.f_size());
-        std::memset(fft.backward_data(), 0, sizeof(types::complex_t) * fft.size());
-        std::memcpy(fft.forward_data(), config.source_function().data(), fft.size() * sizeof(types::real_t));
-        fft.execute_forward();
-        std::transform(std::as_const(fft).backward_data(), fft.backward_data_end(), fft.backward_data(), [](const auto& v) { return std::conj(v); });
+            acstc::utils::real_fft<types::real_t, types::complex_t> fft(static_cast<int>(config.f_size()));
+            std::memset(fft.backward_data(), 0, sizeof(types::complex_t) * fft.size());
+            std::memcpy(fft.forward_data(), config.source_function().data(), fft.size() * sizeof(types::real_t));
+            fft.execute_forward();
+            std::transform(std::as_const(fft).backward_data(), fft.backward_data_end(), fft.backward_data(), [](const auto& v) { return std::conj(v); });
 
-        config.f_mode(config.mode::impulse);
-        const auto nf = config.f_size();
+            config.f_mode(decltype(config)::mode::impulse);
+            const auto nf = config.f_size();
 
         acstc::solver solver(config);
 
@@ -928,12 +929,13 @@ int main(int argc, char* argv[]) {
     if (job_type == "rays") {
         verbose_config_field_group_parameters(field_group::Rays);
 
-        if (config.const_modes()) {
-            const auto [k_j, phi_j] = config.create_const_modes<types::real_t>(config.n_modes(), verbose(2));
-            save_rays(output_filename, vm.count("binary") > 0, k_j, step);
-        } else {
-            const auto [k_j, phi_j] = config.create_modes<types::real_t>(config.n_modes(), verbose(2));
-            save_rays(output_filename, vm.count("binary") > 0, k_j, step);
+            if (config.const_modes()) {
+                const auto [k_j, phi_j] = config.create_const_modes<types::real_t>(config.n_modes(), verbose(2));
+                save_rays(output_filename, vm.count("binary") > 0, k_j, step);
+            }
+            else {
+                const auto [k_j, phi_j] = config.create_modes<types::real_t>(config.n_modes(), verbose(2));
+                save_rays(output_filename, vm.count("binary") > 0, k_j, step);
         }
 
         return 0;
@@ -968,6 +970,11 @@ int main(int argc, char* argv[]) {
         write_conditions(init, ny, writer);
 
         return 0;
+        }
+        throw std::logic_error(std::string("Unknown job type: ") + job_type);
     }
-    throw std::logic_error(std::string("Unknown job type: ") + job_type);
+    catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+        return 1;
+    }
 }
