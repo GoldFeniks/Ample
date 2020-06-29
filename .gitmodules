@@ -1,9 +1,9 @@
 [submodule "modules/Acoustics-at-home"]
 	path = modules/Acoustics-at-home
-	url = git@github.com:Nauchnik/Acoustics-at-home.git
+	url = https://github.com/Nauchnik/Acoustics-at-home.git
 [submodule "modules/delaunay"]
 	path = modules/delaunay
-	url = git@github.com:GoldFeniks/delaunay.git
+	url = https://github.com/GoldFeniks/delaunay.git
 [submodule "modules/DORK"]
 	path = modules/DORK
-	url = git@github.com:GoldFeniks/DORK.git
+	url = https://github.com/GoldFeniks/DORK.git
