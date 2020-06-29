@@ -73,8 +73,8 @@ namespace acstc {
                 va[j].assign(_ny, b1[j] / den);
                 s0[j] = im * tw * _c / k0[j] / (_b - _c) / _hx - on;
                 va[j][0] = va[j].back() = s0[j] + tw;
-                ik[j] = k_int[j].template line(_x0, _y0, _y1, _ny);
-                ip[j] = phi_int[j].template line(_x0, _y0, _y1, _ny);
+                ik[j] = k_int[j].line(_x0, _y0, _y1, _ny);
+                ip[j] = phi_int[j].line(_x0, _y0, _y1, _ny);
                 for (size_t i = 0; i < _ny; ++i) {
                     cv[j][i] = init[j][i];
                     bv[i] += ip[j][i] * init[j][i];
@@ -98,8 +98,8 @@ namespace acstc {
                 for (size_t i = 1; i < _nx; ++i) {
                     ov.assign(_ny, Val(0));
                     for (size_t j = j0; j < j1; ++j) {
-                        k_int[j].template line(x, _y0, _y1, nk);
-                        phi_int[j].template line(x, _y0, _y1, phi);
+                        k_int[j].line(x, _y0, _y1, nk);
+                        phi_int[j].line(x, _y0, _y1, phi);
 
                         for (size_t m = 1; m < _ny - 1; ++m) {
                             const auto dd = ((std::pow(nk[m], 2) + std::pow(pk[j][m], 2)) / tw - sq_k0[j] - tw / _sq_hy) / sq_k0[j];
