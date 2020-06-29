@@ -9,6 +9,11 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR};${CMAKE_MODULE_PATH}")
 
 set(PROJECT_DIR ${PROJECT_SOURCE_DIR}/../../)
 
+# FFTW3 is currently broken on Linux
+if(WIN32)
+    find_package(FFTW3 REQUIRED)
+endif()
+
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(Boost 1.69 COMPONENTS program_options REQUIRED)
@@ -21,10 +26,25 @@ include_directories(
 )
 
 add_executable(ACOUSTIC ${PROJECT_DIR}/build/main.cpp)
-target_link_libraries(ACOUSTIC 
-    Threads::Threads
-    nlohmann_json::nlohmann_json
-    ${Boost_LIBRARIES} 
-    ${PROJECT_DIR}/modules/Acoustics-at-home/binaries/libnormal_modes.a
-    fftw3
-)
+
+if(WIN32)
+    if (USE_VCPKG)
+        set_target_properties(ACOUSTIC PROPERTIES VS_GLOBAL_VcpkgEnabled true)
+    endif()
+    
+    target_link_libraries(ACOUSTIC 
+        Threads::Threads
+        nlohmann_json::nlohmann_json
+        ${Boost_LIBRARIES} 
+        ${PROJECT_DIR}/modules/Acoustics-at-home/lib/normal_modes.lib
+        FFTW3::fftw3
+    )
+else()
+    target_link_libraries(ACOUSTIC 
+        Threads::Threads
+        nlohmann_json::nlohmann_json
+        ${Boost_LIBRARIES} 
+        ${PROJECT_DIR}/modules/Acoustics-at-home/lib/libnormal_modes.a
+        fftw3
+    )
+endif()

@@ -30,9 +30,12 @@ namespace acstc {
                 const bool& enabled = true, const leave_behavior& leave = leave_behavior::global) : 
                 _n(n),
                 _description(description),
-                _leave(leave),
+                _do_leave(leave),
                 _enabled(enabled)
             {
+#ifdef _WIN32
+                _enable_vt100();
+#endif
                 write_progress();
             }
 
@@ -47,7 +50,7 @@ namespace acstc {
             }
 
             ~progress_bar() {
-                if (!_first && (_leave == leave_behavior::leave || _leave == leave_behavior::global && leave))
+                if (!_first && (_do_leave == leave_behavior::leave || _do_leave == leave_behavior::global && leave))
                     do_leave();
             }
 
@@ -101,8 +104,18 @@ namespace acstc {
             static constexpr auto long_dots = "................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................";
             static constexpr auto long_eqqs = "================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================================";
 
+#ifdef _WIN32
+            static void _enable_vt100() {
+                static bool enabled = false;
+                if (!enabled) {
+                    enabled = true;
+                    system(" ");
+                }
+            }
+#endif
+
             const size_t _n;
-            leave_behavior _leave;
+            leave_behavior _do_leave;
             std::string _description;
             bool _first = true, _enabled;
             size_t _cur = 0, _last = 0, _elapsed = 0, _k = 0;
@@ -123,7 +136,7 @@ namespace acstc {
 #ifdef _WIN32
                 CONSOLE_SCREEN_BUFFER_INFO csbi;
                 GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-                return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+                return static_cast<size_t>(csbi.srWindow.Right) - csbi.srWindow.Left + 1;
 #else
                 struct winsize w;
                 ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
@@ -174,7 +187,7 @@ namespace acstc {
                 const auto dots = middle > eqqs ? middle - eqqs - 1 : 0;
 
                 printf("\033[2K\033[1G%s%.*s %3d%%|%.*s%.*s%.*s%s",  _description.c_str(), has_description, ":",
-                    static_cast<size_t>(progress * 100), eqqs, long_eqqs, static_cast<int>(_n != _cur), ">", dots, long_dots, _buffer);
+                    static_cast<int>(progress * 100), eqqs, long_eqqs, static_cast<int>(_n != _cur), ">", static_cast<int>(dots), long_dots, _buffer);
                 fflush(stdout);
             }
 

@@ -1,3 +1,7 @@
+#ifdef _WIN32
+#define NOMINMAX
+#endif
+
 #include <cmath>
 #include <chrono>
 #include <complex>
@@ -714,90 +718,90 @@ int main(int argc, char* argv[]) {
         po::positional_options_description positional;
         positional.add("job_type", 1);
 
-    po::options_description generic("Generic options");
-    size_t report;
-    std::string config_filename;
-    generic.add_options()
+        po::options_description generic("Generic options");
+        size_t report;
+        std::string config_filename;
+        generic.add_options()
             ("help,h", "Print this message")
             ("verbosity,v", po::value(&acstc::utils::verbosity::instance().level)->default_value(0), "Verbosity level")
             ("config,c", po::value(&config_filename)->default_value("config.json"), "Config filename");
 
-    po::options_description output("Output options");
-    size_t step;
-    std::string output_filename;
-    output.add_options()
+        po::options_description output("Output options");
+        size_t step;
+        std::string output_filename;
+        output.add_options()
             ("output,o", po::value(&output_filename)->default_value("output.txt"), "Output filename")
             ("step,s", po::value(&step)->default_value(100)->value_name("k"), "Output every k-th computed row")
             ("binary", "Use binary output");
 
-    po::options_description computation("Computation options");
-    size_t num_workers, buff_size;
-    computation.add_options()
+        po::options_description computation("Computation options");
+        size_t num_workers, buff_size;
+        computation.add_options()
             ("workers,w", po::value(&num_workers)->default_value(1), "Number of workers for computation")
             ("buff,b", po::value(&buff_size)->default_value(100), "Buff size to be used during multithreaded computation");
 
-    po::options_description options;
-    std::string job_type;
-    options.add_options()
+        po::options_description options;
+        std::string job_type;
+        options.add_options()
             ("job_type", po::value(&job_type)->default_value("solution"));
-    options.add(generic).add(output).add(computation);
+        options.add(generic).add(output).add(computation);
 
-    po::variables_map vm;
-    po::store(po::command_line_parser(argc, argv).positional(positional).options(options).run(), vm);
-    po::notify(vm);
+        po::variables_map vm;
+        po::store(po::command_line_parser(argc, argv).positional(positional).options(options).run(), vm);
+        po::notify(vm);
 
-    if (vm.count("help")) {
-        po::options_description desc;
-        desc.add(generic).add(output).add(computation);
-        std::cout << "Usage: [solution|modes] (=solution) [options]\n" << desc << std::endl;
-        return 0;
-    }
+        if (vm.count("help")) {
+            po::options_description desc;
+            desc.add(generic).add(output).add(computation);
+            std::cout << "Usage: [solution|modes] (=solution) [options]\n" << desc << std::endl;
+            return 0;
+        }
 
-    config.update_from_file(config_filename);
+        config.update_from_file(config_filename);
 
-    if (job_type == "solution") {
-        verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
-        acstc::utils::progress_bar::leave = true;
+        if (job_type == "solution") {
+            verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
+            acstc::utils::progress_bar::leave = true;
 
-        const auto nf = config.f_size();
-        acstc::solver solver(config);
-        types::vector1d_t<types::real_t> k0, phi_s;
+            const auto nf = config.f_size();
+            acstc::solver solver(config);
+            types::vector1d_t<types::real_t> k0, phi_s;
 
-        auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-            solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
-        };
-
-        auto with_solver_const = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-            solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
-        };
-
-        auto with_initial_conditions = add_initial_conditions(k0, phi_s, with_solver);
-        auto with_initial_conditions_const = add_initial_conditions(k0, phi_s, with_solver_const);
-
-        auto function = [&](auto&& writer) {
-            acstc::utils::progress_bar pbar(nf, "Frequency", verbose(2), acstc::utils::progress_bar::leave_behavior::stay);
-
-            auto execute_function = [&](auto&& with_solver) {
-                add_verbosity(report, config.nx(), with_solver)(writer);
+            auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+                solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
             };
 
-            for (const auto& fi : pbar) {
-                config.f_index(fi);
-                std::tie(k0, phi_s) = config.create_source_modes(config.n_modes());
+            auto with_solver_const = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+                solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+            };
 
-                if (config.complex_modes())
-                    execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
-                else
-                    execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
-            }
+            auto with_initial_conditions = add_initial_conditions(k0, phi_s, with_solver);
+            auto with_initial_conditions_const = add_initial_conditions(k0, phi_s, with_solver_const);
 
-        };
+            auto function = [&](auto&& writer) {
+                acstc::utils::progress_bar pbar(nf, "Frequency", verbose(2), acstc::utils::progress_bar::leave_behavior::stay);
 
-        add_writer(output_filename, vm.count("binary") > 0, step, function)();
-        return 0;
-    }
+                auto execute_function = [&](auto&& with_solver) {
+                    add_verbosity(report, config.nx(), with_solver)(writer);
+                };
 
-    if (job_type == "impulse") {
+                for (const auto& fi : pbar) {
+                    config.f_index(fi);
+                    std::tie(k0, phi_s) = config.create_source_modes(config.n_modes());
+
+                    if (config.complex_modes())
+                        execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+                    else
+                        execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+                }
+
+            };
+
+            add_writer(output_filename, vm.count("binary") > 0, step, function)();
+            return 0;
+        }
+
+        if (job_type == "impulse") {
             verbose_config_field_group_parameters(field_group::Modes | field_group::Solver | field_group::Initial);
             acstc::utils::progress_bar::leave = true;
 
@@ -810,29 +814,29 @@ int main(int argc, char* argv[]) {
             config.f_mode(decltype(config)::mode::impulse);
             const auto nf = config.f_size();
 
-        acstc::solver solver(config);
+            acstc::solver solver(config);
 
-        const auto& depth = config.receiver_depth();
-        const auto nr = depth.points().size();
+            const auto& depth = config.receiver_depth();
+            const auto nr = depth.points().size();
 
-        types::vector1d_t<types::real_t> k0, phi_s;
-        types::vector2d_t<types::complex_t> result(nr, types::vector1d_t<types::complex_t>(nf, types::real_t(0)));
+            types::vector1d_t<types::real_t> k0, phi_s;
+            types::vector2d_t<types::complex_t> result(nr, types::vector1d_t<types::complex_t>(nf, types::real_t(0)));
 
-        types::vector1d_t<size_t> ix(nr);
-        std::iota(ix.begin(), ix.end(), 0);
-        std::sort(ix.begin(), ix.end(), [&](const auto& a, const auto& b) { 
-            return std::get<0>(depth.points(a)) < std::get<0>(depth.points(b));
-        });        
+            types::vector1d_t<size_t> ix(nr);
+            std::iota(ix.begin(), ix.end(), 0);
+            std::sort(ix.begin(), ix.end(), [&](const auto& a, const auto& b) {
+                return std::get<0>(depth.points(a)) < std::get<0>(depth.points(b));
+                });
 
-        const auto iy = acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny());
+            const auto iy = acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny());
 
-        size_t li = 0;
-        acstc::utils::progress_bar pbar(nf, "Impulse", verbose(2), acstc::utils::progress_bar::leave_behavior::stay);
+            size_t li = 0;
+            acstc::utils::progress_bar pbar(nf, "Impulse", verbose(2), acstc::utils::progress_bar::leave_behavior::stay);
 
-        auto execute_function = [&, &fi=pbar.current()](auto&& with_solver) {
-            with_solver(acstc::utils::callbacks(
-                acstc::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)), 
-                [&, last=types::vector1d_t<types::complex_t>(), last_x=double(0)](const auto& mx, const auto& data) mutable {
+            auto execute_function = [&, &fi = pbar.current()](auto&& with_solver) {
+                with_solver(acstc::utils::callbacks(
+                    acstc::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)),
+                    [&, last = types::vector1d_t<types::complex_t>(), last_x = double(0)](const auto& mx, const auto& data) mutable {
                     const auto x = mx + config.x0();
                     for (; last.size() && li < ix.size() && std::get<0>(depth.points(ix[li])) <= x; ++li) {
                         const auto& [px, py] = depth.points(ix[li]);
@@ -843,91 +847,91 @@ int main(int argc, char* argv[]) {
                     last_x = x;
                     last.assign(data.begin(), data.end());
                 }));
-        };
+            };
 
-        auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-            solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
-        };
+            auto with_solver = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+                solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
+            };
 
-        auto with_solver_const = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
-            solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
-        };
+            auto with_solver_const = [&](const auto& init, const auto& k_j, const auto& phi_j, auto&& callback) mutable {
+                solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+            };
 
-        auto with_initial_conditions = add_initial_conditions(k0, phi_s, with_solver);
-        auto with_initial_conditions_const = add_initial_conditions(k0, phi_s, with_solver_const);
+            auto with_initial_conditions = add_initial_conditions(k0, phi_s, with_solver);
+            auto with_initial_conditions_const = add_initial_conditions(k0, phi_s, with_solver_const);
 
-        const auto max = std::abs(*std::max_element(std::as_const(fft).backward_data(), fft.backward_data_end(), 
-            [](const auto& a, const auto& b) {
-                return std::abs(a) < std::abs(b);
+            const auto max = std::abs(*std::max_element(std::as_const(fft).backward_data(), fft.backward_data_end(),
+                [](const auto& a, const auto& b) {
+                    return std::abs(a) < std::abs(b);
+                }
+            ));
+
+            for (const auto& fi : pbar) {
+                li = 0;
+                config.f_index(fi);
+
+                if (std::abs(fft.backward_data(fi)) < max * config.tolerance())
+                    continue;
+
+                std::tie(k0, phi_s) = config.create_source_modes(0);
+
+                if (config.complex_modes())
+                    execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+                else
+                    execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
             }
-        ));
 
-        for (const auto& fi : pbar) {
-            li = 0;
-            config.f_index(fi);
+            const auto h = config.bathymetry().point(0, config.y_s());
+            const auto cs = config.hydrology().line(0, 0, h, static_cast<size_t>(h));
+            const auto cm = std::max({
+                *std::max_element(cs.begin(), cs.end()),
+                *std::max_element(config.bottom_c1s().begin(), config.bottom_c1s().end()),
+                *std::max_element(config.bottom_c2s().begin(), config.bottom_c2s().end())
+                });
 
-            if (std::abs(fft.backward_data(fi)) < max * config.tolerance())
-                continue;
+            auto omeg = acstc::utils::mesh_1d(0., 1 / config.dt(), fft.size());
+            std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
 
-            std::tie(k0, phi_s) = config.create_source_modes(0);
+            types::vector1d_t<types::real_t> tau(nr);
+            types::vector2d_t<types::real_t> impulse(nr, types::vector1d_t<types::real_t>(fft.size()));
+
+            for (size_t i = 0; i < result.size(); ++i) {
+                const auto d = tau[i] = std::hypot(std::get<0>(depth.points(i)), std::get<1>(depth.points(i))) / cm;
+
+                auto zip = acstc::utils::zip(result[i], omeg);
+                std::transform(zip.begin(), zip.end(), fft.backward_data(),
+                    [&](const auto& v) {
+                        return std::conj(std::get<0>(v) * std::exp(-1i * d * std::get<1>(v)));
+                    }
+                );
+
+                fft.execute_backward().normalize_forward();
+                std::memcpy(impulse[i].data(), fft.forward_data(), fft.size() * sizeof(*fft.forward_data()));
+            }
+
+            save_impulse(output_filename, tau, impulse, vm.count("binary") > 0);
+
+            return 0;
+        }
+
+        if (job_type == "modes") {
+            verbose_config_field_group_parameters(field_group::Modes);
 
             if (config.complex_modes())
-                execute_function(add_modes<types::complex_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
+                save_modes<types::complex_t>(output_filename, vm.count("binary") > 0,
+                    [](auto& writer) {
+                        return [&](const auto& data) {
+                            writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * 2);
+                        };
+                    });
             else
-                execute_function(add_modes<types::real_t>(k0.size(), with_initial_conditions, with_initial_conditions_const));
-        }
-
-        const auto h = config.bathymetry().point(0, config.y_s());
-        const auto cs = config.hydrology().line(0, 0, h, static_cast<size_t>(h));
-        const auto cm = std::max({
-            *std::max_element(cs.begin(), cs.end()), 
-            *std::max_element(config.bottom_c1s().begin(), config.bottom_c1s().end()),
-            *std::max_element(config.bottom_c2s().begin(), config.bottom_c2s().end())
-        });
-
-        auto omeg = acstc::utils::mesh_1d(0., 1 / config.dt(), fft.size());
-        std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
-
-        types::vector1d_t<types::real_t> tau(nr);
-        types::vector2d_t<types::real_t> impulse(nr, types::vector1d_t<types::real_t>(fft.size()));
-
-        for (size_t i = 0; i < result.size(); ++i) {
-            const auto d = tau[i] = std::hypot(std::get<0>(depth.points(i)), std::get<1>(depth.points(i))) / cm;
-
-            auto zip = acstc::utils::zip(result[i], omeg);
-            std::transform(zip.begin(), zip.end(), fft.backward_data(), 
-                [&](const auto& v) {
-                    return std::conj(std::get<0>(v) * std::exp(-1i * d * std::get<1>(v)));
-                }
-            );                
-
-            fft.execute_backward().normalize_forward();
-            std::memcpy(impulse[i].data(), fft.forward_data(), fft.size() * sizeof(*fft.forward_data()));
-        }
-
-        save_impulse(output_filename, tau, impulse, vm.count("binary") > 0);
-
-        return 0;
-    }
-    
-    if (job_type == "modes") {
-        verbose_config_field_group_parameters(field_group::Modes);
-
-        if (config.complex_modes())
-            save_modes<types::complex_t>(output_filename, vm.count("binary") > 0,
-                [](auto& writer) {
-                    return [&](const auto& data) {
-                        writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * 2);
-                    };
-            });
-        else
-            save_modes<types::real_t>(output_filename, vm.count("binary") > 0,
+                save_modes<types::real_t>(output_filename, vm.count("binary") > 0,
                     [](auto& writer) { return [&](const auto& data) { writer(data); }; });
-        return 0;
-    }
+            return 0;
+        }
 
-    if (job_type == "rays") {
-        verbose_config_field_group_parameters(field_group::Rays);
+        if (job_type == "rays") {
+            verbose_config_field_group_parameters(field_group::Rays);
 
             if (config.const_modes()) {
                 const auto [k_j, phi_j] = config.create_const_modes<types::real_t>(config.n_modes(), verbose(2));
@@ -936,40 +940,40 @@ int main(int argc, char* argv[]) {
             else {
                 const auto [k_j, phi_j] = config.create_modes<types::real_t>(config.n_modes(), verbose(2));
                 save_rays(output_filename, vm.count("binary") > 0, k_j, step);
-        }
-
-        return 0;
-    }
-
-    if (job_type == "init") {
-        verbose_config_field_group_parameters(field_group::Initial);
-
-        const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
-        const auto init = get_initial_conditions(k0, phi_s);
-
-        const auto nj = k0.size();
-        const auto ny = config.ny();
-
-        const auto ys = acstc::utils::mesh_1d(config.y0(), config.y1(), ny);
-
-        if (vm.count("binary") > 0) {
-            acstc::utils::binary_writer<types::real_t> writer(output_filename);
-
-            writer.stream().write(reinterpret_cast<const char*>(&nj), sizeof(nj));
-            writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
-            writer.write(ys);
-            write_conditions(init, ny, writer);
+            }
 
             return 0;
         }
 
-        acstc::utils::text_writer<types::real_t> writer(output_filename);
+        if (job_type == "init") {
+            verbose_config_field_group_parameters(field_group::Initial);
 
-        writer.stream() << nj << ' ' << ny << '\n';
-        writer.write(ys);
-        write_conditions(init, ny, writer);
+            const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
+            const auto init = get_initial_conditions(k0, phi_s);
 
-        return 0;
+            const auto nj = k0.size();
+            const auto ny = config.ny();
+
+            const auto ys = acstc::utils::mesh_1d(config.y0(), config.y1(), ny);
+
+            if (vm.count("binary") > 0) {
+                acstc::utils::binary_writer<types::real_t> writer(output_filename);
+
+                writer.stream().write(reinterpret_cast<const char*>(&nj), sizeof(nj));
+                writer.stream().write(reinterpret_cast<const char*>(&ny), sizeof(ny));
+                writer.write(ys);
+                write_conditions(init, ny, writer);
+
+                return 0;
+            }
+
+            acstc::utils::text_writer<types::real_t> writer(output_filename);
+
+            writer.stream() << nj << ' ' << ny << '\n';
+            writer.write(ys);
+            write_conditions(init, ny, writer);
+
+            return 0;
         }
         throw std::logic_error(std::string("Unknown job type: ") + job_type);
     }

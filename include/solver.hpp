@@ -9,6 +9,11 @@
 #include "utils/utils.hpp"
 #include "utils/interpolation.hpp"
 
+//WINDOWS DEFINES VERY NICE MACRO FOR NO REASON
+#ifdef IN
+#undef IN
+#endif
+
 namespace acstc {
     
     using namespace std::complex_literals;
@@ -19,8 +24,8 @@ namespace acstc {
     public:
 
         solver(const Arg& a,  const Arg& b,  const Arg& c,
-               const Arg& x0, const Arg& x1, const Arg& nx,
-               const Arg& y0, const Arg& y1, const Arg& ny)
+               const Arg& x0, const Arg& x1, const size_t& nx,
+               const Arg& y0, const Arg& y1, const size_t& ny)
                : _a(a), _b(b), _c(c), _hx((x1 - x0) / (nx - 1)),
                  _hy((y1 - y0) / (ny - 1)), _sq_hy(std::pow(_hy, 2)), _x0(x0), _x1(x1), _y0(y0), _y1(y1), _nx(nx), _ny(ny) {}
 

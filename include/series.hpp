@@ -28,10 +28,10 @@ namespace acstc {
             static constexpr auto arg = J * pi<T> / den<T, N>;
 
             template<typename T, size_t J, size_t N>
-            static constexpr auto b = T(2) / den<T, N> * std::pow(std::sin(arg<T, J, N>), 2);
+            static const auto b = T(2) / den<T, N> * std::pow(std::sin(arg<T, J, N>), 2);
 
             template<typename T, size_t J, size_t N>
-            static constexpr auto c = std::pow(std::cos(arg<T, J, N>), 2);
+            static const auto c = std::pow(std::cos(arg<T, J, N>), 2);
 
             template<typename T, size_t N, size_t M, typename = std::enable_if_t<1 <= M>>
             struct setter {
