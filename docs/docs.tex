@@ -282,8 +282,8 @@ pN0K ... pNMK
         \subsection{Receivers data}
             \par Receivers can be specified as \nameref{sec:in-file} or \nameref{sec:in-place} using \code{"receivers"} key as an array of tuples of three real values: \code{x}, \code{y} and \code{z} coordinates of the receiver. The first value of binary data must be \code{uint32} --- the number of receivers, text data must only contain coordinates.
         \subsection{Initial values}
-            \par Initial data is specified using the \code{"init"} key. Currently \code{"green"}, \code{"gauss"}, \code{"ray_simple"} and \code{"ray"} values are supported
-            \subsubsection{Green}
+            \par Initial data is specified using the \code{"init"} key. Currently \code{"greene"}, \code{"gauss"}, \code{"ray_simple"} and \code{"ray"} values are supported
+            \subsubsection{Greene}
                 \par The standard Greene starter
                 \begin{equation*}
                     \mathcal{A}_j\left(0, y\right)=\frac{\varphi_j\left(z_s\right)}{2\sqrt{\pi}}\left(1.4467-0.8402k_{j,0}^2\left(y-y_s\right)^2\right)e^{-\frac{k_{j,0}^2\left(y-y_s\right)}{1.5256}}
@@ -400,7 +400,7 @@ pN0K ... pNMK
     "l0": 0,
     "l1": 4000,
     "nl": 4001,
-    "init": "green",
+    "init": "greene",
     "tapering": {
         "angled": {
             "value": 0.1

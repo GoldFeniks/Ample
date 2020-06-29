@@ -295,8 +295,8 @@ void print_initial_conditions(std::stringstream& stream) {
     stream << "Initial conditions parameters.\n    Type: ";
     const auto type = data["init"].get<std::string>();
 
-    if (type == "green")
-        stream << "Green source";
+    if (type == "greene")
+        stream << "Greene source";
     else if (type == "gauss")
         stream << "Gaussian source";
     else if (type == "ray_simple") {
@@ -452,7 +452,7 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
     std::transform(phi_s.begin(), phi_s.end(), as.begin(), [](const auto& phi) { return phi / (2 * std::sqrt(M_PI)); });
     std::transform(k0.begin(), k0.end(), ws.begin(), [](const auto& k0) { return 1 / std::pow(k0, 2); } );
 
-    if (init == "green")
+    if (init == "greene")
         return acstc::greene_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
 
     if (init == "gauss")

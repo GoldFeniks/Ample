@@ -460,7 +460,7 @@ namespace acstc {
                 { "l0", T(0) },
                 { "l1", T(4000) },
                 { "nl", size_t(4001) },
-                { "init", "green" },
+                { "init", "greene" },
                 { "tapering", 
                   { "angled",
                     {
