@@ -43,6 +43,12 @@ namespace acstc {
 
             public:
 
+                using iterator_category = std::output_iterator_tag;
+                using value_type = typename It::value_type;
+                using difference_type = typename It::difference_type;
+                using pointer = typename It::pointer;
+                using reference = typename It::reference;
+
                 explicit stride_iterator(It begin, It end, const size_t& k) : _it(begin), _end(end), _k(k) {}
 
                 bool operator==(const stride_iterator& other) const {
@@ -62,6 +68,10 @@ namespace acstc {
                 }
 
                 const auto& operator*() const {
+                    return *_it;
+                }
+
+                const auto& operator->() const {
                     return *_it;
                 }
 
@@ -239,6 +249,12 @@ namespace acstc {
 
             public:
 
+                using iterator_category = std::forward_iterator_tag;
+                using value_type = decltype(std::declval<zip>()[0]);
+                using difference_type = size_t;
+                using pointer = value_type*;
+                using reference = value_type&;
+
                 explicit iterator(const zip& owner, const size_t index = 0) : _owner(owner), _index(index) {}
 
                 bool operator==(const iterator& other) const {
@@ -250,6 +266,10 @@ namespace acstc {
                 }
 
                 auto operator*() const {
+                    return _owner[_index];
+                }
+
+                auto operator->() const {
                     return _owner[_index];
                 }
 
