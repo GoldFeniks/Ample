@@ -55,7 +55,7 @@ namespace acstc {
             read_data<T, V> data;
             std::tie(std::ignore, data.cols) = __impl::read_line<T, V>(stream);
             while (__impl::find_something(stream)) {
-                const auto [val, row] = __impl::read_line<T, V>(stream);
+                auto [val, row] = __impl::read_line<T, V>(stream);
                 if (row.size()) {
                     data.rows.push_back(std::move(val));
                     data.data.push_back(std::move(row));

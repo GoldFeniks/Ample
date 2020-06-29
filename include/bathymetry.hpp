@@ -22,7 +22,7 @@ namespace acstc {
         }
 
         static auto from_binary(std::istream& stream) {
-            const auto [y, x, depths] = binary_table_reader<T>::read(stream);
+            auto [y, x, depths] = binary_table_reader<T>::read(stream);
             return from_table(std::move(x), std::move(y), std::move(depths));
         }
 

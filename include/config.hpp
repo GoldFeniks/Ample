@@ -539,6 +539,11 @@ namespace acstc {
 
         static auto _create_source_function(const json& data, const std::filesystem::path& path) {
             if (data.is_array()) {
+                if (data[0].is_number()) {
+                    const auto f = data.template get<types::vector1d_t<T>>();
+                    return std::make_tuple(f, utils::mesh_1d<T>(0, f.size() - 1, f.size()));
+                }
+
                 const auto type = data[0].template get<std::string>();
                 const auto desc = data[1];
 
