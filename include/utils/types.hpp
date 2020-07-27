@@ -1,4 +1,5 @@
 #pragma once
+#include <tuple>
 #include <vector>
 #include <complex>
 
@@ -22,6 +23,9 @@ namespace acstc {
         using rvector2d_t = vector2d_t<real_t>;
         using cvector1d_t = vector1d_t<complex_t>;
         using cvector2d_t = vector2d_t<complex_t>;
+
+        template<typename T>
+        using tuple2_t = std::tuple<T, T>;
 
     }// namespace types
 

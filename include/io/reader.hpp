@@ -8,9 +8,10 @@ namespace acstc {
 
     namespace __impl {
 
-        auto find_something(std::istream& stream) {
+        template<typename... T>
+        auto find_something(std::istream& stream, const T&... chars) {
             auto c = stream.peek();
-            while (c != '\n' && c != EOF) {
+            while (((c != chars) && ...)) {
                 if (c == ' ' || c == '\t')
                     while (c == ' ' || c == '\t') {
                         stream.get();
@@ -28,7 +29,7 @@ namespace acstc {
             T row;
             V buff;
             stream >> row;
-            while (find_something(stream)) {
+            while (find_something(stream, '\n', EOF)) {
                 stream >> buff;
                 data.push_back(buff);
             }
@@ -54,7 +55,7 @@ namespace acstc {
         static auto read(std::istream& stream) {
             read_data<T, V> data;
             std::tie(std::ignore, data.cols) = __impl::read_line<T, V>(stream);
-            while (__impl::find_something(stream)) {
+            while (__impl::find_something(stream, '\n', EOF)) {
                 auto [val, row] = __impl::read_line<T, V>(stream);
                 if (row.size()) {
                     data.rows.push_back(std::move(val));
@@ -107,7 +108,7 @@ namespace acstc {
             T a;
             V b;
 
-            while (__impl::find_something(stream)) {
+            while (__impl::find_something(stream, EOF)) {
                 stream >> a >> b;
                 first.push_back(a);
                 second.push_back(b);

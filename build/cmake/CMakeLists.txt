@@ -22,6 +22,7 @@ include_directories(
     ${PROJECT_DIR}/modules/Acoustics-at-home/src/cambala
     ${PROJECT_DIR}/modules/delaunay
     ${PROJECT_DIR}/modules/DORK/include
+    ${PROJECT_DIR}/modules/zip/include
     ${Boost_INCLUDE_DIR}
 )
 

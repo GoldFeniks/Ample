@@ -238,6 +238,8 @@ namespace acstc {
         CONFIG_DATA_FIELD(nl, size_t)
         CONFIG_DATA_FIELD(init, std::string)
         CONFIG_DATA_FIELD(tolerance, T)
+        CONFIG_DATA_FIELD(reference_index, size_t)
+        CONFIG_DATA_FIELD(sel_range, types::tuple2_t<T>)
 
         CONFIG_FIELD(data, json)
         CONFIG_FIELD(a, T)
@@ -313,6 +315,18 @@ namespace acstc {
             return _receiver_depth[0].point(x, y);
         }
 
+        auto mnx() const {
+            if (_data.count("mnx") && _data.count("mny"))
+                return _data["mnx"].template get<size_t>();
+            return bathymetry().x().size();
+        }
+
+        auto mny() const {
+            if (_data.count("mny") && (const_modes() || _data.count("mnx")))
+                return _data["mny"].template get<size_t>();
+            return bathymetry().y().size();
+        }
+
         template<typename V = T>
         auto create_modes(const size_t& c = 0, const bool show_progress = false) const {
             if (_data.count("modes"))
@@ -351,6 +365,32 @@ namespace acstc {
                 return std::make_tuple(type, data["left"].get<T>(), data["right"].get<T>());
             const auto value = data["value"].get<T>();
             return std::make_tuple(type, value, value);
+        }
+
+        void save(const std::filesystem::path& output) const {
+            json out = _data;
+            _save_in_file(out, "bathymetry", _path, output);
+            _save_in_file(out, "hydrology", _path, output);
+            _save_in_file(out, "receivers", _path, output);
+
+            if (_data.count("modes"))
+                _save_in_file(out, "modes", _path, output);
+
+            if (!_data.count("mnx") || !_data.count("mny")) {
+                out["mnx"] = bathymetry().x().size();
+                out["mny"] = bathymetry().y().size();
+            }
+
+            const auto& sf = _data["source_function"];
+            if (sf.is_array() && !sf[0].is_number())
+                _save_in_file(out, "source_function", _path, output);
+
+            const auto& coeffs = _data["coefficients"];
+            if (!(coeffs[0].template get<std::string>() == "abc"))
+                out["coefficients"] = { "abc", { a(), b(), c() } };
+
+            std::ofstream file(output / "config.json");
+            file << std::setw(4) << out << std::endl;
         }
 
     private:
@@ -468,8 +508,27 @@ namespace acstc {
                     }
                   }
                 },
-                { "tolerance", T(0.02) }
+                { "tolerance", T(0.02) },
+                { "reference_index", size_t(0) },
+                { "sel_range", { T(-1), T(-1) } }
             };
+        }
+
+        static void _save_in_file(json& data, const std::string& name, 
+            const std::filesystem::path& path, const std::filesystem::path& output) {
+            auto desc = data[name];
+            const auto type = desc[0].template get<std::string>();
+
+            if (type == "values")
+                return;
+
+            const auto binary = type == "binary_file";
+            auto filename = output / name;
+            filename += binary ? ".bin" : ".txt";
+
+            std::filesystem::copy(utils::make_file_path(path, desc[1].template get<std::string>()), filename, 
+                std::filesystem::copy_options::overwrite_existing);
+            desc[1] = filename;
         }
 
         static auto _create_hydrology(const json& data, const std::filesystem::path& path) {

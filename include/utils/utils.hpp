@@ -1,6 +1,7 @@
 #pragma once
 #include <tuple>
 #include <string>
+#include <sstream>
 #include <cstddef>
 #include <iterator>
 #include <algorithm>
@@ -375,6 +376,19 @@ namespace acstc {
         template<typename T, typename V>
         T integrate_vector(const size_t& b, const T& h, const V& data) {
             return integrate_vector(size_t(0), b, h, data);
+        }
+
+        template<typename It>
+        std::string join(It begin, const It& end, const std::string& sep = ' ') {
+            std::ostringstream result;
+
+            if (begin != end)
+                result << *begin++;
+
+            while (begin != end)
+                result << sep << *begin++;
+
+            return result.str();
         }
 
     }// namespace utils

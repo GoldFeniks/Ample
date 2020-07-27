@@ -129,7 +129,7 @@ namespace acstc {
                 this->after_write();
             }
 
-            void write(const T* data, const size_t count) {
+            void write(const T* data, const size_t& count) {
                 write(data, data + count);
             }
 
@@ -156,6 +156,10 @@ namespace acstc {
             template<typename It>
             void operator()(It begin, It end) {
                 write<It>(std::move(begin), std::move(end));
+            }
+
+            void operator()(const T* data, const size_t& count) {
+                write(data, count);
             }
 
         };

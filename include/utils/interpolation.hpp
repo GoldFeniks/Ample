@@ -166,7 +166,7 @@ namespace acstc {
                     _interpolators = other._interpolators;
                     _common_data = other._common_data;
                     for (auto& it : _interpolators)
-                        it.data_ref = std::cref(_common_data);
+                        it._args = std::cref(_common_data);
                     return *this;
                 }
 

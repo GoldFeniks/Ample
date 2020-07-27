@@ -7,3 +7,6 @@
 [submodule "modules/DORK"]
 	path = modules/DORK
 	url = https://github.com/GoldFeniks/DORK.git
+[submodule "modules/zip"]
+	path = modules/zip
+	url = https://github.com/GoldFeniks/zip.git

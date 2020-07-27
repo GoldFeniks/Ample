@@ -20,17 +20,17 @@ namespace acstc {
 
         public:
 
-            enum class leave_behavior {
-                stay, leave, global
+            enum class on_end {
+                clear, leave, global
             };
 
-            inline static bool leave = false;
+            inline static bool clear_on_end = false;
 
             progress_bar(const size_t& n, const std::string& description = "", 
-                const bool& enabled = true, const leave_behavior& leave = leave_behavior::global) : 
+                const bool& enabled = true, const on_end& end = on_end::global) : 
+                _end(end),
                 _n(n),
                 _description(description),
-                _do_leave(leave),
                 _enabled(enabled)
             {
 #ifdef _WIN32
@@ -50,8 +50,10 @@ namespace acstc {
             }
 
             ~progress_bar() {
-                if (!_first && (_do_leave == leave_behavior::leave || _do_leave == leave_behavior::global && leave))
-                    do_leave();
+                if (!_first && (_end == on_end::clear || _end == on_end::global && clear_on_end))
+                    clear();
+                else
+                    printf("\n");
             }
 
             void next() {
@@ -98,6 +100,14 @@ namespace acstc {
                 set_description(std::to_string(value));
             }
 
+            void clear() const {
+                if (_first)
+                    return;
+
+                printf("\033[2K\033[1F");
+                fflush(stdout);
+            }
+
         private:
 
             static constexpr size_t delay = 100;
@@ -114,22 +124,14 @@ namespace acstc {
             }
 #endif
 
+            on_end _end;
             const size_t _n;
-            leave_behavior _do_leave;
             std::string _description;
             bool _first = true, _enabled;
             size_t _cur = 0, _last = 0, _elapsed = 0, _k = 0;
 
             char* _buffer = new char[512];
             std::chrono::system_clock::time_point _time_point;
-
-            void do_leave() {
-                if (_first)
-                    return;
-
-                printf("\033[2K\033[1F");
-                fflush(stdout);
-            }
 
 
             static size_t get_window_size() {

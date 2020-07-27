@@ -2,6 +2,8 @@
 
 #include <cmath>
 #include <cstddef>
+#include <algorithm>
+#include <type_traits>
 #include "dork.hpp"
 #include "utils/types.hpp"
 #include "utils/progress_bar.hpp"
@@ -140,72 +142,102 @@ namespace acstc {
 
         }// namespace __impl
 
-        template<typename Arg>
+        template<typename Arg, typename Val>
         auto compute(
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
                 const Arg& a0, const Arg& a1, const size_t& na,
-                const utils::linear_interpolated_data_1d<Arg, Arg>& k_j,
+                const utils::linear_interpolated_data_1d<Arg, Val>& k_j,
                 const bool& show_progress = false) {
-            types::vector1d_t<Arg> k0(k_j.size());
-            for (size_t j = 0; j < k_j.size(); ++j)
-                k0[j] = k_j[j].point(y0);
+            if constexpr (!std::is_same_v<Arg, Val>) {
+                const auto& x = k_j.template get<0>();
 
-            const auto kd_j = __impl::calc_derivative(k_j);
+                types::vector2d_t<Arg> data(k_j.size(), types::vector1d_t<Arg>(x.size()));
+                for (size_t i = 0; i < data.size(); ++i) {
+                    const auto& k_j_data = k_j[i].data();
+                    std::transform(k_j_data.begin(), k_j_data.end(), data[i].begin(),
+                        [](const auto& value) { return value.real(); }
+                    );
+                }
 
-            size_t j = 0;
+                return compute(x0, y0, l1, nl, a0, a1, na, utils::linear_interpolated_data_1d<Arg, Arg>(x, data), show_progress);
+            } else {
+                types::vector1d_t<Arg> k0(k_j.size());
+                for (size_t j = 0; j < k_j.size(); ++j)
+                    k0[j] = k_j[j].point(y0);
 
-            const auto fx = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return k0[j] * t / k_j[j].point(y);
-            };
+                const auto kd_j = __impl::calc_derivative(k_j);
 
-            const auto fy = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return k0[j] * z / k_j[j].point(y);
-            };
+                size_t j = 0;
 
-            const auto ft = [&kd_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return 0;
-            };
+                const auto fx = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return k0[j] * t / k_j[j].point(y);
+                };
 
-            const auto fz = [&kd_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return kd_j[j].point(y);
-            };
+                const auto fy = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return k0[j] * z / k_j[j].point(y);
+                };
 
-            return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
+                const auto ft = [&kd_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return 0;
+                };
+
+                const auto fz = [&kd_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return kd_j[j].point(y);
+                };
+
+                return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
+            }
         }
 
-        template<typename Arg>
+        template<typename Arg, typename Val>
         auto compute(
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
                 const Arg& a0, const Arg& a1, const size_t& na,
-                const utils::linear_interpolated_data_2d<Arg, Arg>& k_j,
+                const utils::linear_interpolated_data_2d<Arg, Val>& k_j,
                 const bool& show_progress = false) {
-            types::vector1d_t<Arg> k0(k_j.size());
-            for (size_t j = 0; j < k_j.size(); ++j)
-                k0[j] = k_j[j].point(x0, y0);
+            if constexpr (!std::is_same_v<Arg, Val>) {
+                const auto& x = k_j.template get<0>();
+                const auto& y = k_j.template get<1>();
 
-            const auto [kdx_j, kdy_j] = __impl::calc_derivatives(k_j);
+                types::vector3d_t<Arg> data(k_j.size(), types::vector2d_t<Arg>(x.size(), types::vector1d_t<Arg>(y.size())));
+                for (size_t i = 0; i < data.size(); ++i) {
+                    const auto& k_j_data = k_j[i].data();
+                    for (size_t j = 0; j < data[i].size(); ++j)
+                        std::transform(k_j_data[j].begin(), k_j_data[j].end(), data[i][j].begin(),
+                            [](const auto& value) { return value.real(); }
+                        );
+                }
 
-            size_t j = 0;
+                return compute(x0, y0, l1, nl, a0, a1, na, utils::linear_interpolated_data_2d<Arg, Arg>(x, y, data), show_progress);
+            } else {
+                types::vector1d_t<Arg> k0(k_j.size());
+                for (size_t j = 0; j < k_j.size(); ++j)
+                    k0[j] = k_j[j].point(x0, y0);
 
-            const auto fx = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return k0[j] * t / k_j[j].point(x, y);
-            };
+                const auto [kdx_j, kdy_j] = __impl::calc_derivatives(k_j);
 
-            const auto fy = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return k0[j] * z / k_j[j].point(x, y);
-            };
+                size_t j = 0;
 
-            const auto ft = [&kdx_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return kdx_j[j].point(x, y);
-            };
+                const auto fx = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return k0[j] * t / k_j[j].point(x, y);
+                };
 
-            const auto fz = [&kdy_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return kdy_j[j].point(x, y);
-            };
+                const auto fy = [&k0, &k_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return k0[j] * z / k_j[j].point(x, y);
+                };
 
-            return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
+                const auto ft = [&kdx_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return kdx_j[j].point(x, y);
+                };
+
+                const auto fz = [&kdy_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                        return kdy_j[j].point(x, y);
+                };
+
+                return __impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
+            }
         }
 
     }// namespace rays
