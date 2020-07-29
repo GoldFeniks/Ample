@@ -201,7 +201,6 @@ namespace acstc {
             _receiver_depth = _create_receiver_depth(_data["receivers"], _path);
             std::tie(_f, _t) = _create_source_function(_data["source_function"], _path);
             _fill_coefficients(_data["coefficients"]);
-
         }
 
         CONFIG_DATA_FIELD(mode_subset, double)
@@ -240,6 +239,7 @@ namespace acstc {
         CONFIG_DATA_FIELD(tolerance, T)
         CONFIG_DATA_FIELD(reference_index, size_t)
         CONFIG_DATA_FIELD(sel_range, types::tuple2_t<T>)
+        CONFIG_DATA_FIELD(sel_strict, bool)
 
         CONFIG_FIELD(data, json)
         CONFIG_FIELD(a, T)
@@ -510,7 +510,8 @@ namespace acstc {
                 },
                 { "tolerance", T(0.02) },
                 { "reference_index", size_t(0) },
-                { "sel_range", { T(-1), T(-1) } }
+                { "sel_range", { T(-1), T(-1) } },
+                { "sel_strict", false }
             };
         }
 

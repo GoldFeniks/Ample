@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <iostream>
 #include <algorithm>
+#include "boost/lexical_cast.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -97,7 +98,7 @@ namespace acstc {
 
             template<typename T>
             void set_description(const T& value) {
-                set_description(std::to_string(value));
+                set_description(boost::lexical_cast<std::string>(value));
             }
 
             void clear() const {
@@ -178,6 +179,9 @@ namespace acstc {
             }
 
             void write() const {
+                if (!_enabled)
+                    return;
+                
                 const auto size = get_window_size();
 
                 const auto progress = double(_cur) / _n;

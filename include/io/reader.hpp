@@ -29,7 +29,7 @@ namespace acstc {
             T row;
             V buff;
             stream >> row;
-            while (find_something(stream, '\n', EOF)) {
+            while (find_something(stream, '\r', '\n', EOF)) {
                 stream >> buff;
                 data.push_back(buff);
             }
@@ -55,7 +55,7 @@ namespace acstc {
         static auto read(std::istream& stream) {
             read_data<T, V> data;
             std::tie(std::ignore, data.cols) = __impl::read_line<T, V>(stream);
-            while (__impl::find_something(stream, '\n', EOF)) {
+            while (__impl::find_something(stream, EOF)) {
                 auto [val, row] = __impl::read_line<T, V>(stream);
                 if (row.size()) {
                     data.rows.push_back(std::move(val));

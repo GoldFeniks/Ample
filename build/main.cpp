@@ -4,6 +4,7 @@
 
 #include <set>
 #include <cmath>
+#include <tuple>
 #include <chrono>
 #include <string>
 #include <complex>
@@ -249,7 +250,7 @@ void print_modes(std::stringstream& stream) {
     print_field<bool>("Use additive depth", "additive_depth", stream);
 
     stream << "    Bottom layers (top_speed -> bottom_speed; depth; density):\n";
-    for (const auto& [c1, c2, z, r] : acstc::utils::zip(
+    for (const auto& [c1, c2, z, r] : feniks::zip(
         data["bottom_c1s"],
         data["bottom_c2s"],
         data["bottom_layers"],
@@ -520,25 +521,24 @@ void write_modes(const KV& k_j, const PV& phi_j, W&& writer) {
     write_modes(phi_j, writer);
 }
 
-template<typename W>
-auto wrap_writer(W& writer) {
-    return [&writer](const auto& data) {
-        writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * sizeof(data[0]) / sizeof(types::real_t));
-    };
-}
-
 template<typename V, typename W>
 void write_strided(const V& v, const size_t& k, W&& writer) {
     auto [begin, end] = acstc::utils::stride(v.begin(), v.end(), k);
-    writer.write(begin, end);
+    while (begin != end)
+        writer(*begin++);
 }
 
 template<typename RX, typename RY, typename W>
 void write_rays(const RX& rx, const RY& ry, const size_t& n, const size_t& k, W&& writer) {
     for (size_t i = 0; i < n; ++i)
         for (const auto& [x, y] : feniks::zip(rx[i].data(), ry[i].data())) {
-            write_strided(x, k, writer);
-            write_strided(y, k, writer);
+            writer.before_write();
+            write_strided(feniks::zip(x, y), k, 
+                [&writer](const auto& value) mutable {
+                    writer.write_one(std::get<0>(value));
+                    writer.write_one(std::get<1>(value));
+                });
+            writer.after_write();
         }
 }
 
@@ -659,33 +659,71 @@ public:
 
         verbose_config_field_group_parameters(group);
 
-        _meta["step"] = step;
-        _meta["binary"] = binary;
-        _meta["output"] = output;
         _meta["f"] = json::array();
         _meta["k0"] = json::array();
-        _meta["mnx"] = config.mnx();
-        _meta["mny"] = config.mny();
         _meta["jobs"] = jobs.raw();
         _meta["phi_s"] = json::array();
-        _meta["n_modes"] = json::array();
-        _meta["num_workers"] = num_workers;
+        _meta["outputs"] = json::array();
         _meta["original_config_path"] = config_path;
-        _meta["n_receivers"] = config.receiver_depth().points().size();
-
-        _add_mesh("x", config.x0(), config.x1(), (config.nx() - 1) / step + 1);
-        _add_mesh("y", config.y0(), config.y1(), config.ny());
-        _add_mesh("a", config.a0(), config.a1(), config.na());
-        _add_mesh("l", config.l0(), config.l1(), (config.nl() - 1) / step + 1);
-
-        _meta["t"] = {
-            { "a", config.t().front() },
-            { "b", config.t().back()  },
-            { "n", config.t().size()  },
-            { "d", config.dt() }
-        };
 
         _pick_writer();
+
+        const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / step + 1);
+        const auto dimy = _dimension(config.y0(), config.y1(), config.ny());
+        const auto dimm = _dimensions(_n_modes);
+
+        const auto files = acstc::utils::make_vector(_meta["f"].get<types::vector1d_t<types::real_t>>(), 
+            [this](const auto& value) { return _add_extension(boost::lexical_cast<std::string>(value)); });
+
+        if (jobs.has_job("sel"))
+            _meta["outputs"].push_back(_get_meta_for("sel", { dimx, dimy }, { _add_extension(std::string("sel")) }));
+
+        if (jobs.has_job("init"))
+            _save_meta_for("init", { dimm, dimy }, files);
+
+        if (jobs.has_job("rays"))
+            _save_meta_for("rays", { 
+                    dimm,
+                    _dimension(config.a0(), config.a1(), config.na()),
+                    _dimension(config.l0(), config.l1(), (config.nl() - 1) / step + 1)
+                }, files
+            );
+
+        if (jobs.has_job("modes"))
+            if (config.const_modes())
+                _save_meta_for("modes", config.complex_modes() ? "complex_modes" : "real_modes",
+                    { 
+                        dimm,
+                        _dimension(config.y0(), config.y1(), config.mny())
+                    }, files
+                );
+            else
+                _save_meta_for("modes", config.complex_modes() ? "complex_modes" : "real_modes",
+                    { 
+                        dimm,
+                        _dimension(config.x0(), config.x1(), config.mnx()),
+                        _dimension(config.y0(), config.y1(), config.mny())
+                    }, files
+                );
+
+        if (jobs.has_job("impulse")) {
+            const auto values = acstc::utils::make_vector(
+                feniks::zip(config.receiver_depth().points(), config.receiver_depth().data()),
+                [](const auto& value) { 
+                    const auto [xy, z] = value;
+                    const auto [x, y] = xy;
+                    return std::make_tuple(x, y, z);
+                }
+            );
+            _meta["outputs"].push_back(_get_meta_for("impulse", { 
+                    _dimension(values),
+                    _dimension(config.t().front(), config.t().back(), config.t().size())
+                }, { _add_extension(std::string("impulse")) })
+            );
+        }
+
+        if (jobs.has_job("solution"))
+            _save_meta_for("solution", { dimx, dimy }, files);
 
         std::ofstream out(output / "meta.json");
         out << std::setw(4) << _meta << std::endl;
@@ -696,6 +734,56 @@ public:
 private:
 
     json _meta;
+    types::vector1d_t<size_t> _n_modes;
+
+    template<typename V>
+    json _dimensions(const V& values) {
+        return acstc::utils::make_vector(values, [](const auto& value) { return json{ {"n", value } }; });
+    };
+
+    template<typename V>
+    json _dimension(const V& values) {
+        return {
+            { "n", values.size() },
+            { "values", values }
+        };
+    };
+
+    json _dimension(const types::real_t& a, const types::real_t& b, const size_t& n) {
+        return {
+            { "n", n },
+            {
+                "bounds",
+                {
+                    { "a", a },
+                    { "b", b },
+                    { "d", (b - a) / (n - 1) }
+                }
+            }
+        };
+    }
+
+    void _save_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
+        _save_meta_for(type, type, dimensions, files);
+    }
+
+    void _save_meta_for(const std::string& path, const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
+        const auto filename = output / path / "meta.json";
+        std::ofstream out(filename);
+
+        out << std::setw(4) << _get_meta_for(type, dimensions, files);
+
+        _meta["outputs"].push_back(filename);
+    }
+
+    json _get_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
+        return {
+            { "type", type },
+            { "dimensions", dimensions },
+            { "files", files },
+            { "binary", binary }
+        };
+    }
 
     void _prep(const char* name, const field_group& params, field_group& group) {
         if (jobs.has_job(name)) {
@@ -704,22 +792,14 @@ private:
         }
     }
 
-    auto _add_extension(std::filesystem::path path) const {
+    template<typename T>
+    T _add_extension(T path) const {
         path += binary ? ".bin" : ".txt";
         return path;
     }
 
     auto _get_filename(const char* name) const {
         return _add_extension(output / name / boost::lexical_cast<std::string>(config.f()));
-    }
-
-    void _add_mesh(const char* name, const types::real_t& a, const types::real_t& b, const size_t& n) {
-        _meta[name] = {
-            { "a", a },
-            { "b", b },
-            { "n", n },
-            { "d", (b - a) / (n - 1)}
-        };
     }
 
     void _pick_writer() {
@@ -818,11 +898,12 @@ private:
             acstc::utils::progress_bar pbar(config.f_size(), "Frequency", verbose(2), acstc::utils::progress_bar::on_end::leave);
             for (const auto& fi : pbar) {
                 config.f_index(fi);
-                pbar.set_description(std::string("Frequency ") + boost::lexical_cast<std::string>(config.f()));
 
                 const auto f = config.f();
-                if (has_impulse && std::abs(_fft->backward_data(fi)) < _max * config.tolerance() &&
-                    !(has_sel && f0 <= f && f1 >= f))
+                if ((
+                        has_impulse && std::abs(_fft->backward_data(fi)) < _max * config.tolerance() || 
+                        config.sel_strict() && has_sel
+                    ) && !(has_sel && f0 <= f && f1 >= f))
                     continue;
 
                 const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
@@ -935,7 +1016,7 @@ private:
         template<typename K0, typename P0>
         auto _perform_modes(const K0& k0, const P0& phi_s) {
             const size_t nm = k0.size();
-            _owner._meta["n_modes"].push_back(nm);
+            _owner._n_modes.push_back(nm);
 
             const auto start = std::chrono::system_clock::now();
             auto [k_j, phi_j] = M::make(nm, verbose(2));

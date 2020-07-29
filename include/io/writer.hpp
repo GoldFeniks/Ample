@@ -108,7 +108,7 @@ namespace acstc {
         }// namespace writer_bases
 
         template<typename T, typename Base>
-        class writer : protected Base {
+        class writer : public Base {
 
         public:
 

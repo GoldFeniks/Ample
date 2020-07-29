@@ -68,11 +68,11 @@ namespace acstc {
                     return !(*this == other);
                 }
 
-                const auto& operator*() const {
+                const decltype(*std::declval<It>()) operator*() const {
                     return *_it;
                 }
 
-                const auto& operator->() const {
+                const decltype(*std::declval<It>()) operator->() const {
                     return *_it;
                 }
 
