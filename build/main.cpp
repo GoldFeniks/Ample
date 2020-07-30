@@ -1197,8 +1197,8 @@ int main(int argc, char* argv[]) {
         if (vm.count("help")) {
             po::options_description desc;
             desc.add(generic).add(output).add(computation);
-            std::cout << "Usage: [" << acstc::utils::join(available_jobs.begin(), available_jobs.end(), "|") << 
-                "] (=solution) [options]\n" << desc << std::endl;
+            std::cout << "Usage: [ [" << acstc::utils::join(available_jobs.begin(), available_jobs.end(), "|") << 
+                "], ... ] (=solution) [options]\n" << desc << std::endl;
             return 0;
         }
 
