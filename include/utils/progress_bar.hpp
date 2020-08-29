@@ -51,6 +51,9 @@ namespace acstc {
             }
 
             ~progress_bar() {
+                if (!_enabled)
+                    return;
+                
                 if (!_first && (_end == on_end::clear || _end == on_end::global && clear_on_end))
                     clear();
                 else

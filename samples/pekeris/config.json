@@ -1,5 +1,4 @@
 {
-    "source_function": 25,
     "ppm": 10,
     "y0": -4000,
     "y1": 4000,
@@ -8,22 +7,33 @@
     "nx": 15001,
     "mny": 2,
     "z_s": 30,
-    "receivers": [
-        "values",
-        [
-            [0, 0, 30]
-        ]
-    ],
-    "bathymetry": [
-        "values",
+    "init": "greene",
+    "input_data": [
         {
-            "x": [0, 1],
-            "y": [0, 1],
+            "type": "frequencies",
+            "dimensions": [ 2 ],
+            "values": [ 25, 125 ]
+        },
+        {
+            "type": "bathymetry",
+            "dimensions": [ 2, 2 ],
             "values": [
                 [200, 200],
                 [200, 200]
             ]
+        },
+        {
+            "type": "hydrology",
+            "dimensions": [ 2, 2 ],
+            "values": [
+                [1500, 1500],
+                [1500, 1500]
+            ]
+        },
+        {
+            "type": "receivers",
+            "dimensions": [ 1 ],
+            "values": [ [0, 0, 30] ]
         }
-    ],
-    "init": "greene"
+    ]
 }

@@ -521,6 +521,10 @@ namespace acstc {
                     return res;
                 }
 
+                const auto& data() const {
+                    return _data;
+                }
+
             private:
 
                 data_t _data;

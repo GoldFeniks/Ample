@@ -4,7 +4,10 @@
 #include <string>
 #include <cstddef>
 #include <fstream>
+#include <utility>
+#include <optional>
 #include <filesystem>
+#include <type_traits>
 #include <unordered_map>
 #include "modes.hpp"
 #include "series.hpp"
@@ -13,6 +16,8 @@
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "nlohmann/json.hpp"
+#include "utils/convertors.hpp"
+#include "utils/dimensions.hpp"
 #include "initial_conditions.hpp"
 
 namespace acstc {
@@ -113,7 +118,7 @@ namespace acstc {
         };
 
         template<typename T>
-        auto create_receiver_depth(const types::vector1d_t<std::tuple<T, T, T>>& receivers) {
+        auto create_receiver_depth(const types::vector1d_t<std::array<T, 3>>& receivers) {
             types::vector1d_t<T> values;
             types::vector1d_t<std::tuple<T, T>> points;
             for (const auto& [x, y, z] : receivers) {
@@ -131,34 +136,135 @@ namespace acstc {
                 data["n"].template get<size_t>());
         }
 
+        template<typename T, typename... D>
+        struct input_data {
+
+            utils::dimensions<D...> dimensions;
+            decltype(acstc::vector_reader<T>::template read<0, D...>(std::declval<std::istream>(), dimensions)) data;
+
+            explicit input_data(const json& data, const std::filesystem::path& path) :
+                dimensions(data["dimensions"]),
+                data(get_data(data["values"], dimensions, path, data.contains("binary") && data["binary"].template get<bool>())) {}
+
+            template<size_t M = 0>
+            static auto get_data(const json& data, const utils::dimensions<D...>& dims, 
+                const std::filesystem::path& path, const bool& binary) {
+
+                if (data.is_string())
+                    return read_data<M>(dims, path, data.template get<std::string>(), binary);
+
+                check_size<M>(data.size(), dims.template size<M>());
+
+                if constexpr (M + 1 < sizeof...(D))
+                    if constexpr (dims.template is_variable_dim<M>)
+                        return utils::make_vector_i(data,
+                            [&dims, &path, &binary](const auto& data, const size_t& i) {
+                                check_size<M>(data.size(), dims.template size<M>(i));
+                                return make_vector<M>(data, dims, path, binary);
+                            }
+                        );
+                    else 
+                        return make_vector<M>(data, dims, path, binary);
+                else
+                    if constexpr (dims.template is_variable_dim<M>)
+                        return utils::make_vector_i(data,
+                            [&dims, &path, &binary](const auto& data, const size_t& i) {
+                                if (data.is_string()) {
+                                    types::vector1d_t<T> result(dims.template size<M>(i));
+                                    if (binary) {
+                                        std::ifstream inp(utils::make_file_path(path, data.template get<std::string>()), std::ios::binary);
+                                        inp.read(reinterpret_cast<char*>(result.data()), sizeof(T) * result.size());
+                                    } else {
+                                        std::ifstream inp(utils::make_file_path(path, data.template get<std::string>()));
+                                        for (auto& it : result)
+                                            inp >> it;
+                                    }
+                                    return result;
+                                }
+
+                                check_size<M>(data.size(), dims.template size<M>(i));
+                                return data.template get<types::vector1d_t<T>>();
+                            }
+                        );
+                    else 
+                        return data.template get<types::vector1d_t<T>>();
+            }
+
+            template<size_t M>
+            static auto check_size(const size_t& n, const size_t& m) {
+                if (n != m)
+                    throw std::logic_error(
+                        std::string("Wrong dimension size at level ") +
+                        std::to_string(M) + 
+                        ". Expected " +
+                        std::to_string(m) + 
+                        ". Got " +
+                        std::to_string(n)
+                    );
+            }
+
+            template<size_t M>
+            static auto read_data(const utils::dimensions<D...>& dims, const std::filesystem::path& path, const std::string& filename, const bool& binary) {
+                const auto file_path = utils::make_file_path(path, filename);
+                if (binary)
+                    return acstc::vector_reader<T>::template binary_read<M, D...>(std::ifstream(file_path, std::ios::binary), dims);
+                return acstc::vector_reader<T>::template read<M, D...>(std::ifstream(file_path), dims);
+            }
+
+            template<size_t M>
+            static auto make_vector(const json& data, const utils::dimensions<D...>& dims, 
+                const std::filesystem::path& path, const bool& binary) {
+                return utils::make_vector(data, 
+                    [&dims, &path, &binary](const auto& data) {
+                        return get_data<M + 1>(data, dims, path, binary);
+                    }
+                );
+            }
+
+        };
+
     }// namespace __impl;
 
-#define CONFIG_DATA_FIELD(field, type)                                                   \
-    const type& field () const {                                                         \
-        if (!_cache.count(#field))                                                       \
-            _cache[#field] = new data_field<type>(_data[#field].template get<type>());   \
-        return _cache[#field]->template cast<type>().value;                              \
-    }                                                                                    \
-    void field(const type& value) {                                                      \
-        if (const auto it = _cache.find(#field); it != _cache.end()) {                   \
-            delete *it;                                                                  \
-            _cache.erase(it);                                                            \
-        }                                                                                \
-        _data[#field] = value;                                                           \
-    }                                                                                    \
-    void field(type&& value) {                                                           \
-        if (const auto it = _cache.find(#field); it != _cache.end()) {                   \
-            delete *it;                                                                  \
-            _cache.erase(it);                                                            \
-        }                                                                                \
-        _data[#field] = std::move(value);                                                \
-    }
+#define CONFIG_DATA_FIELD(field, type)                                      \
+    private:                                                                \
+        mutable std::optional<type> _data_##field;                          \
+    public:                                                                 \
+        const type& field () const {                                        \
+            if (!_data_##field.has_value())                                 \
+                _data_##field = type(_data[#field].template get<type>());   \
+            return _data_##field.value();                                   \
+        }                                                                   \
+        void field(const type& value) {                                     \
+            _data_##field = value;                                          \
+        }                                                                   \
+        void field(type&& value) {                                          \
+            _data_##field = std::move(value);                               \
+        }
 
+#define CONFIG_FIELD(field, type)                                           \
+    private:                                                                \
+        type _##field;                                                      \
+    public:                                                                 \
+        const type& field () const { return _##field; }                     \
+        void field (const type& value) { _##field = value; }                \
+        void field (type&& value) { _##field = std::move(value); }
 
-#define CONFIG_FIELD(field, type)                                                        \
-    const type& field () const { return _##field; }                                      \
-    void field (const type& value) { _##field = value; }                                 \
-    void field (type&& value) { _##field = std::move(value); }
+#define CONFIG_INPUT_DATA(field, type, op)                           \
+    private:                                                                \
+        std::optional<type> _##field;                                       \
+    public:                                                                 \
+        const auto& field () const {                                        \
+            if (!_##field.has_value())                                      \
+                throw std::logic_error("Field " #field " has no value");    \
+            return _##field.value() op;                                     \
+        }                                                                   \
+        bool has_##field () const {                                         \
+            return _##field.has_value();                                    \
+        }                                                                   \
+        template<typename... Args>                                          \
+        std::enable_if_t<0 < sizeof...(Args)> field(Args&&... args) {       \
+            _##field = type(std::forward<Args>(args)...);                   \
+        }
 
 
     template<typename T = types::real_t>
@@ -166,28 +272,14 @@ namespace acstc {
 
     public:
 
-        enum class mode {
-            frequencies,
-            impulse
-        };
-
         config() :
-            _data(_default_data()),
-            _bathymetry(_create_bathymetry(_data["bathymetry"], "")),
-            _hydrology(_create_hydrology(_data["hydrology"], "")),
-            _receiver_depth(_create_receiver_depth(_data["receivers"], ""))
+            _data(_default_data())
         {
             _fill_coefficients(_data["coefficients"]);
-            std::tie(_f, _t) = _create_source_function(_data["source_function"], "");
         }
 
         explicit config(const std::string& filename) : _data(_default_data()) {
             update_from_file(filename);
-        }
-
-        ~config() {
-            for (const auto& [key, value] : _cache)
-                delete value;
         }
 
         void update_from_file(const std::string& filename) {
@@ -196,10 +288,48 @@ namespace acstc {
             json data;
             in >> data;
             _data.merge_patch(data);
-            _bathymetry = _create_bathymetry(_data["bathymetry"], _path);
-            _hydrology = _create_hydrology(_data["hydrology"], _path);
-            _receiver_depth = _create_receiver_depth(_data["receivers"], _path);
-            std::tie(_f, _t) = _create_source_function(_data["source_function"], _path);
+
+            for (const auto& it : _data["input_data"]) {
+                const auto type = it["type"].template get<std::string>();
+
+                if (type == "bathymetry") {
+                    _bathymetry = _create_bathymetry(it, _path);
+                    continue;
+                }
+
+                if (type == "hydrology") {
+                    _hydrology = _create_hydrology(it, _path);
+                    continue;
+                }
+
+                if (type == "receivers") {
+                    _receiver_depth = _create_receiver_depth(it, _path);
+                    continue;
+                }
+
+                if (type == "source_function") {
+                    std::tie(_times, _source_function) = _create_source_function<T>(it, _path);
+                    continue;
+                }
+
+                if (type == "source_spectrum") {
+                    if (_frequencies.has_value())
+                        throw std::logic_error("Multiple values given for frequencies");
+
+                    std::tie(_frequencies, _source_spectrum) = _create_source_function<std::complex<T>>(it, _path);
+                    continue;
+                }
+
+                if (type == "frequencies") {
+                    if (_frequencies.has_value())
+                        throw std::logic_error("Multiple values given for frequencies");
+
+                    _frequencies = _create_frequences(it, _path);
+                    continue;
+                }
+
+                throw std::logic_error(std::string("Unknown input data type \"") + type + "\"");
+            }
             _fill_coefficients(_data["coefficients"]);
         }
 
@@ -245,7 +375,14 @@ namespace acstc {
         CONFIG_FIELD(a, T)
         CONFIG_FIELD(b, T)
         CONFIG_FIELD(c, T)
-        CONFIG_FIELD(t, types::vector1d_t<T>)
+
+        CONFIG_INPUT_DATA(bathymetry, utils::linear_interpolated_data_2d<T>, [0])
+        CONFIG_INPUT_DATA(hydrology, utils::delaunay_interpolated_data_2d<T>, [0])
+        CONFIG_INPUT_DATA(receiver_depth, utils::nearest_neighbour_interpolated_data_2d<T>, [0])
+        CONFIG_INPUT_DATA(source_function, types::vector1d_t<T>, ;)
+        CONFIG_INPUT_DATA(source_spectrum, types::vector1d_t<std::complex<T>>, ;)
+        CONFIG_INPUT_DATA(frequencies, types::vector1d_t<T>, ;)
+        CONFIG_INPUT_DATA(times, types::vector1d_t<T>, ;)
 
         auto x_bounds() const {
             return std::make_tuple(x0(), x1());
@@ -259,60 +396,32 @@ namespace acstc {
             return std::tuple_cat(x_bounds(), y_bounds());
         }
 
-        const auto& bathymetry() const {
-            return _bathymetry[0];
-        }
-
-        const auto& hydrology() const {
-            return _hydrology[0];
-        }
-
-        const auto& receiver_depth() const {
-            return _receiver_depth[0];
-        }
-
         auto coefficients() const {
             return std::make_tuple(a(), b(), c());
         }
 
         auto f() const {
-            if (_mode == mode::frequencies)
-                return _f[_f_index];
-            return static_cast<T>(_f_index) / ((_f.size() - 1) * (_t[1] - _t[0]));
+            return frequencies()[_index];
+        }
+
+        auto t() const {
+            return times()[_index];
         }
 
         auto dt() const {
-            return _t.size() >= 2 ? _t[1] - _t[0] : T(0);
+            return times().size() >= 2 ? times()[1] - times()[0] : T(0);
         }
 
-        const auto& source_function() const {
-            return _f;
+        void index(const size_t& index) {
+            _index = index;
         }
 
-        void f_mode(const mode& mode) {
-            _mode = mode;
-        }
-
-        const auto& f_mode() const {
-            return _mode;
-        }
-
-        auto f_size() const {
-            if (_mode == mode::frequencies)
-                return _f.size();
-            return _f.size() / 2 + 1;
-        }
-
-        void f_index(const size_t& index) {
-            _f_index = index;
-        }
-
-        const auto& f_index() const {
-            return _f_index;
+        const auto& index() const {
+            return _index;
         }
 
         auto z_r(const T& x = T(0), const T& y = T(0)) const {
-            return _receiver_depth[0].point(x, y);
+            return receiver_depth()[0].point(x, y);
         }
 
         auto mnx() const {
@@ -369,21 +478,15 @@ namespace acstc {
 
         void save(const std::filesystem::path& output) const {
             json out = _data;
-            _save_in_file(out, "bathymetry", _path, output);
-            _save_in_file(out, "hydrology", _path, output);
-            _save_in_file(out, "receivers", _path, output);
 
-            if (_data.count("modes"))
-                _save_in_file(out, "modes", _path, output);
+            for (auto& it : out["input_data"])
+                _copy_files(it["values"], _get_dim_count(it["dimensions"]), _path, 
+                    output / it["type"].template get<std::string>(), it.contains("binary") && it["binary"].template get<bool>());
 
             if (!_data.count("mnx") || !_data.count("mny")) {
                 out["mnx"] = bathymetry().x().size();
                 out["mny"] = bathymetry().y().size();
             }
-
-            const auto& sf = _data["source_function"];
-            if (sf.is_array() && !sf[0].is_number())
-                _save_in_file(out, "source_function", _path, output);
 
             const auto& coeffs = _data["coefficients"];
             if (!(coeffs[0].template get<std::string>() == "abc"))
@@ -395,59 +498,19 @@ namespace acstc {
 
     private:
 
-        template<typename>
-        class data_field;
-
-        struct data_field_base {
-
-            template<typename C>
-            const data_field<C>& cast() const {
-                return *static_cast<const data_field<C>*>(this);
-            }
-
-        };
-
-        template<typename C>
-        class data_field : public data_field_base {
-
-        public:
-
-            const C value;
-
-            data_field(const C& value) : value(value) {}
-            data_field(C&& value) : value(std::move(value)) {}
-
-        };
-
-        json _data;
-        T _a, _b, _c;
-        mutable size_t _f_index = 0;
+        mutable size_t _index = 0;
 
         std::filesystem::path _path;
-        types::vector1d_t<T> _f, _t;
-        mode _mode = mode::frequencies;
-        utils::linear_interpolated_data_2d<T> _bathymetry;
-        utils::delaunay_interpolated_data_2d<T> _hydrology;
-        utils::nearest_neighbour_interpolated_data_2d<T> _receiver_depth;
-        mutable std::unordered_map<std::string, data_field_base*> _cache;
 
         static json _default_data() {
             return {
                 { "mode_subset", -1 },
-                { "max_mode", size_t(-1) },
+                { "max_mode", -1 },
                 { "n_modes", size_t(0) },
                 { "ppm", size_t(2) },
                 { "ordRich", size_t(3) },
-                { "source_function", T(25) },
                 { "z_s", T(100) },
                 { "y_s", T(0) },
-                { "receivers",
-                    { "values",
-                        {
-                            { T(0), T(0), T(30) }
-                        }
-                    }
-                },
                 { "n_layers", size_t(1) },
                 { "bottom_layers", { T(500) } },
                 { "bottom_c1s", { T(1700) } },
@@ -459,34 +522,6 @@ namespace acstc {
                 { "additive_depth", false },
                 { "past_n", size_t(0) },
                 { "border_width", size_t(10) },
-                { "bathymetry",
-                  { "values",
-                    {
-                      { "x", { T(0), T(1) } },
-                      { "y", { T(0), T(1) } },
-                      { "values",
-                        {
-                          { T(200), T(200) },
-                          { T(200), T(200) }
-                        }
-                      }
-                    }
-                  }
-                },
-                { "hydrology",
-                  { "values",
-                    {
-                      { "x", { T(0), T(1) } },
-                      { "z", { T(0), T(1) } },
-                      { "values",
-                        {
-                          { T(1500), T(1500) },
-                          { T(1500), T(1500) }
-                        }
-                      }
-                    }
-                  }
-                },
                 { "x0", T(0) },
                 { "x1", T(15000) },
                 { "nx", size_t(15001) },
@@ -515,124 +550,82 @@ namespace acstc {
             };
         }
 
-        static void _save_in_file(json& data, const std::string& name, 
-            const std::filesystem::path& path, const std::filesystem::path& output) {
-            auto desc = data[name];
-            const auto type = desc[0].template get<std::string>();
+        static size_t _get_depth(const json& data) {
+            return 1 + (data.is_array() ? _get_depth(data[0]) : 0);
+        }
 
-            if (type == "values")
+        static size_t _get_dim_count(const json& data) {
+            size_t result = 0;
+            for (const auto& it : data)
+                result += _get_depth(it);
+            return result;
+        }
+
+        static void _copy_files(json& data, const size_t& depth, 
+            const std::filesystem::path& path, const std::filesystem::path& output, const bool& binary) {
+            size_t count = 0;
+            _copy_files(data, count, depth, path, output, binary);
+        }
+
+        static void _copy_files(json& data, size_t& count, const size_t& depth,
+            const std::filesystem::path& path, const std::filesystem::path& output, const bool& binary) {
+            if (depth == 0)
                 return;
 
-            const auto binary = type == "binary_file";
-            auto filename = output / name;
-            filename += binary ? ".bin" : ".txt";
+            if (data.is_string()) {
+                std::filesystem::create_directories(output);
 
-            std::filesystem::copy(utils::make_file_path(path, desc[1].template get<std::string>()), filename, 
-                std::filesystem::copy_options::overwrite_existing);
-            desc[1] = filename;
+                auto filename = output / std::to_string(count++);
+                filename += binary ? ".bin" : ".txt";
+                std::filesystem::copy(utils::make_file_path(path, data.template get<std::string>()), filename,
+                    std::filesystem::copy_options::overwrite_existing);
+
+                data = filename;
+                return;
+            }
+
+            if (data.is_array()) {
+                for (auto& it : data)
+                    _copy_files(it, count, depth - 1, path, output, binary);
+
+                return;
+            }
+
+            throw std::logic_error("Data must be either string or array");
         }
 
         static auto _create_hydrology(const json& data, const std::filesystem::path& path) {
-            const auto type = data[0].template get<std::string>();
-            if (type == "values")
-                return ::acstc::hydrology<T>::from_table(
-                        data["/1/x"_json_pointer].template get<types::vector1d_t<T>>(),
-                        data["/1/z"_json_pointer].template get<types::vector1d_t<T>>(),
-                        data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
-            if (type == "text_file")
-                return ::acstc::hydrology<T>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
-            if (type == "binary_file")
-                return ::acstc::hydrology<T>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
-            throw std::logic_error("Unknown hydrology type: " + type);
+            const auto [dimensions, inp_data] = __impl::input_data<T, T, T>(data, path);
+
+            return ::acstc::hydrology<T>::from_table(
+                dimensions.template get<1>(),
+                dimensions.template get<0>(),
+                inp_data
+            );
         }
 
         static auto _create_bathymetry(const json& data, const std::filesystem::path& path) {
-            const auto type = data[0].template get<std::string>();
-            if (type == "values")
-                return ::acstc::bathymetry<T>::from_table(
-                        data["/1/x"_json_pointer].template get<types::vector1d_t<T>>(),
-                        data["/1/y"_json_pointer].template get<types::vector1d_t<T>>(),
-                        data["/1/values"_json_pointer].template get<types::vector2d_t<T>>());
-            if (type == "text_file")
-                return ::acstc::bathymetry<T>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
-            if (type == "binary_file")
-                return ::acstc::bathymetry<T>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
-            throw std::logic_error("Unknown bathymetry type: " + type);
+            const auto [dimensions, inp_data] = __impl::input_data<T, T, T>(data, path);
+
+            return ::acstc::bathymetry<T>::from_table(
+                dimensions.template get<0>(),
+                dimensions.template get<1>(),
+                inp_data
+            );
         }
 
         static auto _create_receiver_depth(const json& data, const std::filesystem::path& path) {
-            const auto type = data[0].template get<std::string>();
-            if (type == "values")
-                return __impl::create_receiver_depth(data[1].template get<types::vector1d_t<std::tuple<T, T, T>>>());
-            if (type == "text_file") {
-                std::ifstream inp(utils::make_file_path(path, data[1].template get<std::string>()));
-
-                T x, y, z;
-                types::vector1d_t<T> values;
-                types::vector1d_t<std::tuple<T, T>> points;
-                while (inp >> x >> y >> z) {
-                    values.emplace_back(z);
-                    points.emplace_back(x, y);
-                }
-
-                return utils::nearest_neighbour_interpolated_data_2d<T>(std::move(points), std::move(values));
-            }
-            if (type == "binary_file") {
-                std::ifstream inp(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary);
-
-                T data[3];
-                uint32_t n;
-                types::vector1d_t<T> values;
-                types::vector1d_t<std::tuple<T, T>> points;
-
-                inp.read(reinterpret_cast<char*>(&n), sizeof(uint32_t));
-                for (size_t i = 0; i < n; ++i) {
-                    inp.read(reinterpret_cast<char*>(data), sizeof(data));
-                    values.emplace_back(data[2]);
-                    points.emplace_back(data[0], data[1]);
-                }
-
-                return utils::nearest_neighbour_interpolated_data_2d<T>(std::move(points), std::move(values));
-            }
-            throw std::logic_error("Unknown receivers type: " + type);
+            return __impl::create_receiver_depth(__impl::input_data<std::array<T, 3>, utils::no_values_dim>(data, path).data);
         }
 
+        template<typename V = T>
         static auto _create_source_function(const json& data, const std::filesystem::path& path) {
-            if (data.is_array()) {
-                if (data[0].is_number()) {
-                    const auto f = data.template get<types::vector1d_t<T>>();
-                    return std::make_tuple(f, utils::mesh_1d<T>(0, f.size() - 1, f.size()));
-                }
+            const auto [dimensions, inp_data] = __impl::input_data<V, T>(data, path);
+            return std::make_tuple(dimensions.template get<0>(), inp_data);
+        }
 
-                const auto type = data[0].template get<std::string>();
-                const auto desc = data[1];
-
-                types::vector1d_t<T> t, f;
-                if (type == "values") {
-                    t = desc["t"].template get<types::vector1d_t<T>>();
-                    f = desc["f"].template get<types::vector1d_t<T>>();
-                } else if (type == "text_file")
-                    std::tie(t, f) = pairs_reader<T>::read(
-                        std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
-                else if (type == "binary_file")
-                    std::tie(t, f) = binary_pairs_reader<T>::read(
-                        std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
-                else
-                    throw std::logic_error("Unknown source function type: " + type);
-
-                if (t.size() > 1) {
-                    const auto d = t[1] - t[0];
-                    for (size_t i = 2; i < t.size(); ++i)
-                        if (std::abs(t[i] - t[i - 1] - d) > 1e-10)
-                            throw std::logic_error("Data must be uniform");
-                }
-
-                return std::make_tuple(f, t);
-            }
-
-            return std::make_tuple(
-                types::vector1d_t<T>{ data.template get<T>() }, 
-                types::vector1d_t<T>{ T(0) });
+        static auto _create_frequences(const json& data, const std::filesystem::path& path) {
+            return __impl::input_data<T, utils::no_values_dim>(data, path).data;
         }
 
         void _fill_coefficients(const json& data) {

@@ -3,6 +3,9 @@
 #include <vector>
 #include <istream>
 #include "../utils/types.hpp"
+#include "../utils/utils.hpp"
+#include "../utils/convertors.hpp"
+#include "../utils/dimensions.hpp"
 
 namespace acstc {
 
@@ -35,6 +38,53 @@ namespace acstc {
             }
             stream.get();
             return std::make_tuple(row, data);
+        }
+
+
+        template<typename T, size_t M, bool B, typename... D>
+        auto read_vector(std::istream& stream, const utils::dimensions<D...>& dims) {
+            if constexpr (M + 1 < sizeof...(D))
+                if constexpr (dims.template is_variable_dim<M>)
+                    return utils::make_vector_i(dims.template size<M>(),
+                        [&stream, &dims](const size_t& i) mutable {
+                            return utils::make_vector_i(dims.template size<M>(i),
+                                [&stream, &dims](const auto&) {
+                                    return read_vector<T, M + 1, B, D...>(stream, dims);
+                                }
+                            );
+                        }
+                    );
+                else
+                    return utils::make_vector_i(dims.template size<M>(),
+                        [&stream, &dims](const auto&) {
+                            return read_vector<T, M + 1, B, D...>(stream, dims);
+                        }
+                    );
+            else
+                if constexpr (dims.template is_variable_dim<M>) {
+                    types::vector2d_t<T> result;
+
+                    for (size_t i = 0; i < dims.template size<M>(); ++i) {
+                        result.emplace_back(dims.template size<M>(i));
+                        if constexpr (B)
+                            stream.read(reinterpret_cast<char*>(result.back().data()), sizeof(T) * dims.template size<M>(i));
+                        else
+                            for (size_t j = 0; j < dims.template size<M>(i); ++j)
+                                stream >> result.back()[j];
+                    }
+
+                    return result;
+                } else {
+                    types::vector1d_t<T> result(dims.template size<M>());
+
+                    if constexpr (B)
+                        stream.read(reinterpret_cast<char*>(result.data()), sizeof(T) * dims.template size<M>());
+                    else
+                        for (size_t j = 0; j < dims.template size<M>(); ++j)
+                            stream >> result[j];
+
+                    return result;
+                }
         }
 
     }// namespace __impl
@@ -145,6 +195,21 @@ namespace acstc {
 
         static auto read(std::istream&& stream) {
             return read(stream);
+        }
+
+    };
+
+    template<typename T>
+    struct vector_reader {
+
+        template<size_t M = 0, typename... D>
+        static auto read(std::istream&& stream, const utils::dimensions<D...>& dims) {
+            return __impl::read_vector<T, M, false, D...>(stream, dims);
+        }
+
+        template<size_t M = 0, typename... D>
+        static auto binary_read(std::istream&& stream, const utils::dimensions<D...>& dims) {
+            return __impl::read_vector<T, M, true, D...>(stream, dims);
         }
 
     };

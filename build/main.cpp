@@ -31,6 +31,7 @@
 #include "nlohmann/json.hpp"
 #include "utils/callback.hpp"
 #include "utils/verbosity.hpp"
+#include "utils/dimensions.hpp"
 #include "boost/lexical_cast.hpp"
 #include "initial_conditions.hpp"
 #include "utils/progress_bar.hpp"
@@ -44,6 +45,8 @@ using nlohmann::json;
 using acstc::utils::verboseln;
 using acstc::utils::verboseln_lv;
 using namespace std::complex_literals;
+
+static constexpr size_t max_elements = 5;
 
 acstc::config<types::real_t> config;
 
@@ -90,18 +93,43 @@ private:
 
 } helper;
 
+template<typename T>
+struct strings {
+
+    static auto get(const T& values) {
+        types::vector1d_t<std::string> result;
+
+        for (const auto& it : values)
+            result.push_back(helper.to_string(it));
+
+        return result;
+    }
+
+};
+
+template<typename... T>
+struct strings<std::tuple<T...>> {
+
+    static auto get(const std::tuple<T...>& values) {
+        return get(values, std::make_index_sequence<sizeof...(T)>{});
+    }
+
+    template<size_t... I>
+    static auto get(const std::tuple<T...>& values, std::integer_sequence<size_t, I...>) {
+        types::vector1d_t<std::string> result(sizeof...(I));
+        ((result[I] = helper.to_string(std::get<I>(values))), ...);
+        return result;
+    }
+
+};
+
 template<typename V>
 auto get_strings(const V& values) {
-    types::vector1d_t<std::string> result;
-
-    for (const auto& it : values)
-        result.push_back(helper.to_string(it));
-
-    return result;
+    return strings<V>::get(values);
 }
 
 template<typename X, typename Y, typename V>
-void print_table(const X& x, const Y& y, const V& values, std::stringstream& stream) {
+void print_table(const X& x, const Y& y, const V& values, std::stringstream& stream, const bool& is_torn = false) {
     const auto sx = get_strings(x);
     const auto sy = get_strings(y);
 
@@ -161,48 +189,40 @@ void print_table(const X& x, const Y& y, const V& values, std::stringstream& str
     *sep_line = '+';
     sep_line[length - 1] = '+';
 
+    if (is_torn) {
+        std::memset(sep_line, '~', length);
+
+        current = sep_line;
+        for (const auto& it : widths) {
+            *current = '+';
+            current += it + 3;
+        }
+        *current = '+';
+    }
+
     stream << "        " << sep_line << '\n';
 
     delete[] buffer;
     delete[] sep_line;
 }
 
-void print_loaded_data(const json& data, std::stringstream& stream) {
-    const auto type = data[0].get<std::string>();
-
-    if (type == "values") {
-        stream << "loaded from config file;\n";
-        return;
-    }
-
-    stream << "loaded from " << (type == "text_file" ? "text" : "binary") << " file " << data[1] << ";\n";
-}
-
-void print_bathymetry(std::stringstream& stream) {
-    stream << "    Bathymetry: ";
-    if (config.bathymetry().x().size() <= 5 && config.bathymetry().y().size() <= 5) {
-        stream << '\n';
-        print_table(config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), stream); 
-        return;
-    }
-
-    print_loaded_data(config.data()["bathymetry"], stream);
-}
-
 template<typename T>
-void print_array(const std::string& title, const json& data, std::stringstream& stream) {
-    stream << "    " << title << ':';
+void print_values(const char* name, const T& values, std::stringstream& stream) {
+    stream << "    " << name << ": [ " << helper.to_string(values[0]);
 
-    for (const auto& it : data)
-        stream << " " << helper.to_string(it.get<T>());
+    for (size_t i = 1; i < std::min(values.size(), max_elements); ++i)
+        stream << ", " << helper.to_string(values[i]);
 
-    stream << ";\n";
+    if (values.size() > max_elements)
+        stream << ", ...";
+
+    stream << " ];\n";
 }
 
 void print_source_modes(const json& data, std::stringstream& stream) {
     if (data.count("k0") && data.count("phi_s")) {
-        print_array<types::real_t>("Reference wave numbers", data["k0"], stream);
-        print_array<types::real_t>("Source modal functions", data["phi_s"], stream);
+        print_values("Reference wave numbers", data["k0"], stream);
+        print_values("Source modal functions", data["phi_s"], stream);
     }
 }
 
@@ -220,28 +240,22 @@ void print_modes(std::stringstream& stream) {
     const auto& data = config.data();
 
     stream << "Modal parameters.\n";
-    if (data.count("modes")) {
-        stream << "    Modes: ";
-        print_loaded_data(data["modes"], stream);
-        print_source_modes(data, stream);
-        stream << '\n';
-        return;
-    }
 
     print_field<double>("Mode subset", "mode_subset", stream);
     print_field<size_t>("Points per meter over z", "ppm", stream);
     print_field<size_t>("Richardson extrapolation order", "ordRich", stream);
 
-    if (config.f_size() == 1)
-        stream << "    Source frequency, Hz: " << config.f() << '\n';
-    else {
-        stream << "    Source function: ";
-        if (config.f_size() <= 5)
-            print_table(std::array<const char*, 1>{"f(t)"}, config.t(),
-                std::array<std::remove_reference_t<decltype(config.source_function())>, 1>{config.source_function()}, stream);
-        else
-            print_loaded_data(data["source_function"], stream);
-    }
+    if (config.has_frequencies())
+        print_values("Frequencies, Hz", config.frequencies(), stream);
+
+    if (config.has_times())
+        print_values("Times, s", config.times(), stream);
+
+    if (config.has_source_function())
+        print_values("Source function", config.source_function(), stream);
+
+    if (config.has_source_spectrum()) 
+        print_values("Source spectrum", config.source_spectrum(), stream);
 
     print_field<types::real_t>("Points per meter over z", "ppm", stream);
     print_field<types::real_t>("Source depth, m", "z_s", stream);
@@ -262,18 +276,13 @@ void print_modes(std::stringstream& stream) {
                                 helper.to_string( r.get<types::real_t>()) << ";\n";
 
     stream << "    Number of water layers: " << data["n_layers"] << ";\n";
-    print_array<types::real_t>("Beta parameters", data["betas"], stream);
+    print_values("Beta parameters", data["betas"], stream);
 
     const auto nm = data["max_mode"].get<size_t>();
     stream << "    Maximal number of modes: " << (nm == size_t(-1) ? "All" : helper.to_string(nm)) << ";\n";
 
     const auto mn = data["n_modes"].get<size_t>();
     stream << "    Required number of modes: " << (mn == size_t(-1) ? "All" : helper.to_string(mn)) << ";\n";
-
-    print_bathymetry(stream);
-
-    stream << "    Hydrology: ";
-    print_loaded_data(data["hydrology"], stream);
 
     if (config.const_modes())
         stream << "    Number of points over y: " << 
@@ -339,11 +348,16 @@ void print_solver(std::stringstream& stream) {
     stream << "Solver parameters:\n";
 
     const auto& receivers = config.receiver_depth();
+    const auto rn = std::min(max_elements, receivers.data().size());
     stream << "    Receivers:\n";
-    for (size_t i = 0; i < std::min(size_t(5), receivers.data().size()); ++i) {
-        const auto& [x, y] = receivers.points()[i];
-        stream << "        [ " << x << ", " << y << ", " << receivers.data()[i] << " ];\n";
-    }
+    print_table(acstc::utils::mesh_1d<size_t>(0, rn - 1, rn), types::vector1d_t<char>{ 'x', 'y', 'z' },
+        acstc::utils::make_vector_i(rn, 
+            [&receivers](const size_t& i) {
+                const auto& [x, y] = receivers.points()[i];
+                return std::make_tuple(x, y, receivers.data()[i]);
+            }
+        ), stream, rn < receivers.data().size()
+    );
 
     print_field<types::real_t>("Source z coordinate", "y_s", stream);
     print_field<size_t>("Width of smooth border over edges", "border_width", stream);
@@ -642,6 +656,10 @@ public:
     size_t step, num_workers, buff_size;
     std::filesystem::path output, config_path;
 
+    void command_line_arguments(int argc, const char* argv[]) {
+        _meta["command_line_arguments"] = types::vector1d_t<const char*>(argv, argv + argc);
+    }
+
     void perform() {
         config.update_from_file(config_path);
         acstc::utils::progress_bar::clear_on_end = true;
@@ -666,17 +684,21 @@ public:
         _meta["outputs"] = json::array();
         _meta["original_config_path"] = config_path;
 
+        const auto start = std::chrono::system_clock::now();
         _pick_writer();
+        const auto end = std::chrono::system_clock::now();
+
+        _meta["computation_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000;
 
         const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / step + 1);
         const auto dimy = _dimension(config.y0(), config.y1(), config.ny());
         const auto dimm = _dimensions(_n_modes);
 
         const auto files = acstc::utils::make_vector(_meta["f"].get<types::vector1d_t<types::real_t>>(), 
-            [this](const auto& value) { return _add_extension(boost::lexical_cast<std::string>(value)); });
+            [this](const auto& value) { return _add_extension(helper.to_string(value)); });
 
         if (jobs.has_job("sel"))
-            _meta["outputs"].push_back(_get_meta_for("sel", { dimx, dimy }, { _add_extension(std::string("sel")) }));
+            _meta["outputs"].push_back(_get_meta_for("sel", { dimx, dimy }, _add_extension(std::string("sel"))));
 
         if (jobs.has_job("init"))
             _save_meta_for("init", { dimm, dimy }, files);
@@ -717,13 +739,13 @@ public:
             );
             _meta["outputs"].push_back(_get_meta_for("impulse", { 
                     _dimension(values),
-                    _dimension(config.t().front(), config.t().back(), config.t().size())
-                }, { _add_extension(std::string("impulse")) })
+                    _dimension(config.times().front(), config.times().back(), config.times().size())
+                }, _add_extension(std::string("impulse")))
             );
         }
 
         if (jobs.has_job("solution"))
-            _save_meta_for("solution", { dimx, dimy }, files);
+            _save_meta_for("solution", { _n_modes, dimx, dimy }, files);
 
         std::ofstream out(output / "meta.json");
         out << std::setw(4) << _meta << std::endl;
@@ -776,11 +798,20 @@ private:
         _meta["outputs"].push_back(filename);
     }
 
+    json _get_meta_for(const std::string& type, const json& dimensions, const std::string& file) {
+        return {
+            { "type", type },
+            { "dimensions", dimensions },
+            { "values", file },
+            { "binary", binary }
+        };
+    }
+
     json _get_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
         return {
             { "type", type },
             { "dimensions", dimensions },
-            { "files", files },
+            { "values", files },
             { "binary", binary }
         };
     }
@@ -799,7 +830,7 @@ private:
     }
 
     auto _get_filename(const char* name) const {
-        return _add_extension(output / name / boost::lexical_cast<std::string>(config.f()));
+        return _add_extension(output / name / helper.to_string(config.f()));
     }
 
     void _pick_writer() {
@@ -850,25 +881,40 @@ private:
             const auto has_impulse = _owner.jobs.has_job("impulse");
 
             if (has_impulse) {
-                 _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.f_size()));
+                if (config.has_source_function() && config.has_source_spectrum())
+                    throw std::logic_error("Only one of source function or spectrum can be provided to compute impulse");
 
-                std::memset(_fft->backward_data(), 0, sizeof(types::complex_t) * _fft->size());
-                std::memcpy(_fft->forward_data(), config.source_function().data(), _fft->size() * sizeof(types::real_t));
-                _fft->execute_forward();
+                if (config.has_source_function()) {
+                    _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_function().size()));
+                    std::memcpy(_fft->forward_data(), config.source_function().data(), _fft->size() * sizeof(types::real_t));
+                    _fft->execute_forward();
 
-                std::transform(std::as_const(*_fft).backward_data(), _fft->backward_data_end(), _fft->backward_data(), 
-                    [](const auto& v) { 
-                        return std::conj(v); 
-                    }
-                );
+                    std::transform(std::as_const(*_fft).backward_data(), _fft->backward_data_end(), _fft->backward_data(), 
+                        [](const auto& v) { 
+                            return std::conj(v); 
+                        }
+                    );
 
-                config.f_mode(decltype(config)::mode::impulse);
+                    config.frequencies(
+                        acstc::utils::make_vector_i(_fft->size() / 2 + 1, 
+                            [dt=config.dt(), size=_fft->size() - 1](const size_t& i) {
+                                return i / (size * dt);
+                            }
+                        )
+                    );
+                } else if (config.has_source_spectrum()) {
+                    _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_spectrum().size()));
+                    std::memcpy(_fft->backward_data(), config.source_spectrum().data(), _fft->size() * sizeof(types::complex_t));
+                } else
+                    throw std::logic_error("Either source function or spectrum must be provided");
+
+                _source_spectrum.assign(_fft->backward_data(), config.frequencies().size());
 
                 const auto& depth = config.receiver_depth();
                 const auto nr = depth.points().size();
 
                 _impulse_result = new types::vector2d_t<types::complex_t>(nr,
-                    types::vector1d_t<types::complex_t>(config.f_size(), types::real_t(0))
+                    types::vector1d_t<types::complex_t>(config.frequencies().size(), types::real_t(0))
                 );
 
                 _ix = new types::vector1d_t<size_t>(nr);
@@ -888,29 +934,51 @@ private:
                 ));
             }
 
-            if (has_sel)
+            if (has_sel) {
+                if (!config.has_source_spectrum() && !_source_spectrum.has_value())
+                    throw std::logic_error("Source spectrum must be provided");
+
+                if (!_source_spectrum.has_value()) {
+                    _source_spectrum.assign(config.source_spectrum().data(), config.source_spectrum().size());
+                    _max = std::abs(*std::max_element(_source_spectrum.data(), _source_spectrum.data() + _source_spectrum.size(),
+                        [](const auto& a, const auto& b) {
+                            return std::abs(a) < std::abs(b);
+                        }
+                    ));
+                }
+
                 _sel_result = new types::vector2d_t<types::real_t>(
                     config.nx() / _owner.step + 1,
                     types::vector1d_t<types::real_t>(config.ny(), 0)
                 );
 
+                _sel_buffer = new types::vector2d_t<types::complex_t>(
+                    config.nx() / _owner.step + 1,
+                    types::vector1d_t<types::complex_t>(config.ny(), 0)
+                );
+            }
+
             const auto [f0, f1] = config.sel_range();
-            acstc::utils::progress_bar pbar(config.f_size(), "Frequency", verbose(2), acstc::utils::progress_bar::on_end::leave);
+            acstc::utils::progress_bar pbar(config.frequencies().size(), "Frequency", verbose(2), acstc::utils::progress_bar::on_end::leave);
+
             for (const auto& fi : pbar) {
-                config.f_index(fi);
+                config.index(fi);
 
                 const auto f = config.f();
                 if ((
-                        has_impulse && std::abs(_fft->backward_data(fi)) < _max * config.tolerance() || 
+                        _source_spectrum.has_value() && std::abs(_source_spectrum[fi]) < _max * config.tolerance() || 
                         config.sel_strict() && has_sel
                     ) && !(has_sel && f0 <= f && f1 >= f))
                     continue;
+
+                if (_source_spectrum.has_value())
+                    _s = _source_spectrum[fi];
 
                 const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
                 if (!k0.size())
                     continue;
 
-                _owner._meta["f"].push_back(config.f());
+                _owner._meta["f"].push_back(f);
                 const auto [k_j, phi_j] = _perform_modes(k0, phi_s);
                 const auto init = _perform_init(k0, phi_s, k_j);
 
@@ -924,10 +992,16 @@ private:
                         if (i != config.reference_index())
                             result[i][fi] *= _s;
                 }
+
+                if (has_sel) {
+                    for (auto [vs, bs] : feniks::zip(*_sel_result, *_sel_buffer))
+                        for (auto [v, b] : feniks::zip(vs, bs))
+                            v += std::pow(std::abs(b * _s), 2);
+                }
             }
 
             if (has_sel) {
-                const auto size = _fft != nullptr ? _fft->size() : config.f_size();
+                const auto size = has_impulse ? _fft->size() : _source_spectrum.size();
 
                 for (auto& x : *_sel_result)
                     for (auto& y : x)
@@ -938,6 +1012,7 @@ private:
                     writer.write(it);
 
                 delete _sel_result;
+                delete _sel_buffer;
             }
 
             if (has_impulse) {
@@ -1000,8 +1075,9 @@ private:
         types::vector1d_t<size_t>* _ix = nullptr;
         types::vector1d_t<types::real_t>* _iy = nullptr;
         types::vector2d_t<types::real_t>* _sel_result = nullptr;
-        types::vector2d_t<types::complex_t>* _impulse_result = nullptr;
+        acstc::utils::span<const types::complex_t> _source_spectrum;
         acstc::utils::real_fft<types::real_t, types::complex_t>* _fft = nullptr;
+        types::vector2d_t<types::complex_t>* _impulse_result = nullptr, *_sel_buffer = nullptr;
 
         template<typename K0, typename P0, typename KJ>
         auto _perform_init(const K0& k0, const P0& phi_s, const KJ& k_j) {
@@ -1055,9 +1131,8 @@ private:
             if (_owner.jobs.has_job("sel"))
                 _perform_impulse(init, k0, k_j, phi_j,
                     acstc::utils::ekc_callback(_owner.step,
-                        [&sel_result=*_sel_result, i=0](const auto& x, const auto& data) mutable {
-                            for (auto [s, v] : feniks::zip(sel_result[i], data))
-                                s += std::pow(std::abs(v), 2);
+                        [&sel_buffer=*_sel_buffer, i=0](const auto& x, const auto& data) mutable {
+                            sel_buffer[i++] = data;
                         }
                     )
                 );
@@ -1074,8 +1149,8 @@ private:
                         &result=*_impulse_result, 
                         &ix=*_ix,
                         &iy=*_iy,
-                        &fi=config.f_index(),
-                        &s=(_s = _fft->backward_data(config.f_index())),
+                        &fi=config.index(),
+                        &s=_s,
                         last=types::vector1d_t<types::complex_t>(),
                         last_x=config.x0(),
                         li=0,
@@ -1159,12 +1234,14 @@ void validate(boost::any& v,
     }
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* argv[]) {
     try {
+        jobs_config jobs_config;
+        jobs_config.command_line_arguments(argc, argv);
+
         po::positional_options_description positional;
         positional.add("jobs", -1);
 
-        jobs_config jobs_config;
         po::options_description generic("Generic options");
         generic.add_options()
             ("help,h", "Print this message")

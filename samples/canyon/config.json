@@ -1,5 +1,4 @@
 {
-    "source_function": 150,
     "ppm": 10,
     "y0": -3000,
     "y1": 3000,
@@ -7,18 +6,43 @@
     "x1": 10000,
     "nx": 10001,
     "z_s": 10,
-    "receivers": [
-        "values",
-        [
-            [0, 0, 10]
-        ]
-    ],
     "bottom_rho": [2],
     "bottom_c1s": [1800],
     "bottom_c2s": [1800],
-    "bathymetry": [
-        "text_file",
-        "bathymetry.txt"
-    ],
-    "init": "greene"
+    "init": "greene",
+    "input_data": [
+        {
+            "type": "frequencies",
+            "dimensions": [ 1 ],
+            "values": [ 150 ]
+        },
+        {
+            "type": "bathymetry",
+            "dimensions": [
+                2,
+                {
+                    "n": 1001,
+                    "bounds": {
+                        "a": -3000,
+                        "b":  3000,
+                        "d":  6
+                    }
+                }
+            ],
+            "values": "bathymetry.txt"
+        },
+        {
+            "type": "hydrology",
+            "dimensions": [ 2, 2 ],
+            "values": [
+                [1500, 1500],
+                [1500, 1500]
+            ]
+        },
+        {
+            "type": "receivers",
+            "dimensions": [ 1 ],
+            "values": [ [0, 0, 10] ]
+        }
+    ]
 }

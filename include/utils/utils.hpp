@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <tuple>
 #include <string>
 #include <sstream>
@@ -6,6 +7,7 @@
 #include <iterator>
 #include <algorithm>
 #include <filesystem>
+#include <type_traits>
 #include "types.hpp"
 
 namespace acstc {
@@ -328,7 +330,7 @@ namespace acstc {
         }
 
         template<typename T>
-        auto mesh_1d(const T& a, const T& b, const size_t& n) {
+        auto mesh_1d(const T& a, const T& b, const size_t& n) -> types::vector1d_t<decltype(b - a)> {
             if (n == 1)
                 return types::vector1d_t<T>{ a };
 
@@ -340,10 +342,26 @@ namespace acstc {
             return result;
         }
 
-        template<typename V, typename F>
-        auto make_vector(const V& data, const F& func) {
+        template<typename T>
+        void mesh_1d(...);
+
+        template<typename V, typename F, typename = std::enable_if_t<std::is_invocable_v<F, decltype(std::declval<V>()[0])>>>
+        auto make_vector(const V& data, F&& func) {
             types::vector1d_t<decltype(func(data[0]))> result(data.size());
             std::transform(data.begin(), data.end(), result.begin(), func);
+            return result;
+        }
+
+        template<typename V, typename F, typename = std::enable_if_t<std::is_invocable_v<F, decltype(std::declval<V>()[0]), size_t>>>
+        auto make_vector_i(const V& data, F&& func) {
+            return make_vector(data, [&func, i=size_t(0)](const auto& value) mutable { return func(value, i++); });
+        }
+
+        template<typename F, typename = std::enable_if_t<std::is_invocable_v<F, size_t>>>
+        auto make_vector_i(const size_t& n, F&& func) {
+            types::vector1d_t<decltype(func(size_t(0)))> result;
+            for (size_t i = 0; i < n; ++i)
+                result.emplace_back(func(i));
             return result;
         }
 
@@ -390,6 +408,58 @@ namespace acstc {
 
             return result.str();
         }
+
+        template<typename T>
+        class span {
+
+        public:
+
+            span() = default;
+            span(T* values, const size_t& n) : _n(n), _values(values), _has_value(true) {}
+
+            void assign(T* values, const size_t& n) {
+                _n = n;
+                _values = values;
+                _has_value = true;
+            }
+
+            auto& operator[](const size_t& index) {
+                return _values[index];
+            }
+
+            const auto& operator[](const size_t& index) const {
+                return _values[index];
+            }
+
+            size_t size() const {
+                return _n;
+            }
+
+            T* data() {
+                return _values;
+            }
+
+            const T* data() const {
+                return _values;
+            }
+
+            bool has_value() const {
+                return _has_value;
+            }
+
+            void reset() {
+                _n = 0;
+                _values = nullptr;
+                _has_value = false;
+            }
+
+        private:
+
+            size_t _n = 0;
+            T* _values = nullptr;
+            bool _has_value = false;
+
+        };
 
     }// namespace utils
 
