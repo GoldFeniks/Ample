@@ -881,34 +881,7 @@ private:
             const auto has_impulse = _owner.jobs.has_job("impulse");
 
             if (has_impulse) {
-                if (config.has_source_function() && config.has_source_spectrum())
-                    throw std::logic_error("Only one of source function or spectrum can be provided to compute impulse");
-
-                if (config.has_source_function()) {
-                    _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_function().size()));
-                    std::memcpy(_fft->forward_data(), config.source_function().data(), _fft->size() * sizeof(types::real_t));
-                    _fft->execute_forward();
-
-                    std::transform(std::as_const(*_fft).backward_data(), _fft->backward_data_end(), _fft->backward_data(), 
-                        [](const auto& v) { 
-                            return std::conj(v); 
-                        }
-                    );
-
-                    config.frequencies(
-                        acstc::utils::make_vector_i(_fft->size() / 2 + 1, 
-                            [dt=config.dt(), size=_fft->size() - 1](const size_t& i) {
-                                return i / (size * dt);
-                            }
-                        )
-                    );
-                } else if (config.has_source_spectrum()) {
-                    _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_spectrum().size()));
-                    std::memcpy(_fft->backward_data(), config.source_spectrum().data(), _fft->size() * sizeof(types::complex_t));
-                } else
-                    throw std::logic_error("Either source function or spectrum must be provided");
-
-                _source_spectrum.assign(_fft->backward_data(), config.frequencies().size());
+                _load_source_spectrum();
 
                 const auto& depth = config.receiver_depth();
                 const auto nr = depth.points().size();
@@ -926,26 +899,11 @@ private:
                 );
 
                 _iy = new types::vector1d_t<types::real_t>(acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny()));
-
-                _max = std::abs(*std::max_element(std::as_const(*_fft).backward_data(), _fft->backward_data_end(),
-                    [](const auto& a, const auto& b) {
-                        return std::abs(a) < std::abs(b);
-                    }
-                ));
             }
 
             if (has_sel) {
-                if (!config.has_source_spectrum() && !_source_spectrum.has_value())
-                    throw std::logic_error("Source spectrum must be provided");
-
-                if (!_source_spectrum.has_value()) {
-                    _source_spectrum.assign(config.source_spectrum().data(), config.source_spectrum().size());
-                    _max = std::abs(*std::max_element(_source_spectrum.data(), _source_spectrum.data() + _source_spectrum.size(),
-                        [](const auto& a, const auto& b) {
-                            return std::abs(a) < std::abs(b);
-                        }
-                    ));
-                }
+                if (!_source_spectrum.has_value())
+                    _load_source_spectrum();
 
                 _sel_result = new types::vector2d_t<types::real_t>(
                     config.nx() / _owner.step + 1,
@@ -1033,24 +991,15 @@ private:
                 types::vector1d_t<types::real_t> tau(nr);
                 types::vector2d_t<types::real_t> impulse(nr, types::vector1d_t<types::real_t>(_fft->size()));
 
-                const auto ir = config.reference_index();
-                const auto& ref_tau = ir != -1 
-                    ? tau[ir] = std::hypot(std::get<0>(depth.points(ir)), std::get<1>(depth.points(ir))) / cm 
-                    : 0;
-
                 for (size_t i = 0; i < _impulse_result->size(); ++i) {
-                    if (ir != i) {
-                        const auto d = (tau[i] = std::hypot(std::get<0>(depth.points(i)), std::get<1>(depth.points(i))) / cm) - ref_tau;
+                    const auto d = (tau[i] = std::hypot(std::get<0>(depth.points(i)), std::get<1>(depth.points(i))) / cm);
 
-                        auto zip = feniks::zip((*_impulse_result)[i], omeg);
-                        std::transform(zip.begin(), zip.end(), _fft->backward_data(),
-                            [&](const auto& v) {
-                                return std::conj(std::get<0>(v) * std::exp(-1i * d * std::get<1>(v)));
-                            }
-                        );
-                    } else
-                        std::transform((*_impulse_result)[i].begin(), (*_impulse_result)[i].end(), _fft->backward_data(), 
-                            [](const auto& v) { return std::conj(v); });
+                    auto zip = feniks::zip((*_impulse_result)[i], omeg);
+                    std::transform(zip.begin(), zip.end(), _fft->backward_data(),
+                        [&](const auto& v) {
+                            return std::conj(std::get<0>(v) * std::exp(-1i * d * std::get<1>(v)));
+                        }
+                    );
 
                     _fft->execute_backward().normalize_forward();
                     std::memcpy(impulse[i].data(), _fft->forward_data(), _fft->size() * sizeof(types::real_t));
@@ -1078,6 +1027,43 @@ private:
         acstc::utils::span<const types::complex_t> _source_spectrum;
         acstc::utils::real_fft<types::real_t, types::complex_t>* _fft = nullptr;
         types::vector2d_t<types::complex_t>* _impulse_result = nullptr, *_sel_buffer = nullptr;
+
+        void _load_source_spectrum() {
+            if (config.has_source_function() && config.has_source_spectrum())
+                throw std::logic_error("Only one of source function or spectrum can be provided to compute impulse");
+
+            if (config.has_source_function()) {
+                _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_function().size()));
+                std::memcpy(_fft->forward_data(), config.source_function().data(), _fft->size() * sizeof(types::real_t));
+                _fft->execute_forward();
+
+                std::transform(std::as_const(*_fft).backward_data(), _fft->backward_data_end(), _fft->backward_data(), 
+                    [](const auto& v) { 
+                        return std::conj(v); 
+                    }
+                );
+
+                config.frequencies(
+                    acstc::utils::make_vector_i(_fft->size() / 2 + 1, 
+                        [dt=config.dt(), size=_fft->size() - 1](const size_t& i) {
+                            return i / (size * dt);
+                        }
+                    )
+                );
+            } else if (config.has_source_spectrum()) {
+                _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_spectrum().size()));
+                std::memcpy(_fft->backward_data(), config.source_spectrum().data(), _fft->size() * sizeof(types::complex_t));
+            } else
+                throw std::logic_error("Either source function or spectrum must be provided");
+
+            _source_spectrum.assign(_fft->backward_data(), config.frequencies().size());
+
+            _max = std::abs(*std::max_element(std::as_const(*_fft).backward_data(), _fft->backward_data_end(),
+                [](const auto& a, const auto& b) {
+                    return std::abs(a) < std::abs(b);
+                }
+            ));
+        }
 
         template<typename K0, typename P0, typename KJ>
         auto _perform_init(const K0& k0, const P0& phi_s, const KJ& k_j) {
