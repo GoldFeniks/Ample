@@ -925,8 +925,8 @@ private:
                 const auto f = config.f();
                 if ((
                         _source_spectrum.has_value() && std::abs(_source_spectrum[fi]) < _max * config.tolerance() || 
-                        config.sel_strict() && has_sel
-                    ) && !(has_sel && f0 <= f && f1 >= f))
+                        config.sel_strict()
+                    ) && !(config.sel_strict() && f0 <= f && f1 >= f))
                     continue;
 
                 if (_source_spectrum.has_value())
