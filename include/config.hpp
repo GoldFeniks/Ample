@@ -156,7 +156,7 @@ namespace acstc {
                 check_size<M>(data.size(), dims.template size<M>());
 
                 if constexpr (M + 1 < sizeof...(D))
-                    if constexpr (dims.template is_variable_dim<M>)
+                    if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
                         return utils::make_vector_i(data,
                             [&dims, &path, &binary](const auto& data, const size_t& i) {
                                 check_size<M>(data.size(), dims.template size<M>(i));
@@ -166,7 +166,7 @@ namespace acstc {
                     else 
                         return make_vector<M>(data, dims, path, binary);
                 else
-                    if constexpr (dims.template is_variable_dim<M>)
+                    if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
                         return utils::make_vector_i(data,
                             [&dims, &path, &binary](const auto& data, const size_t& i) {
                                 if (data.is_string()) {
@@ -343,7 +343,7 @@ namespace acstc {
         CONFIG_DATA_FIELD(y1, T)
         CONFIG_DATA_FIELD(ny, size_t)
         CONFIG_DATA_FIELD(ppm, size_t)
-        CONFIG_DATA_FIELD(ordRich, size_t)
+        CONFIG_DATA_FIELD(ord_rich, size_t)
         CONFIG_DATA_FIELD(z_s, T)
         CONFIG_DATA_FIELD(y_s, T)
         CONFIG_DATA_FIELD(n_layers, size_t)
@@ -508,7 +508,7 @@ namespace acstc {
                 { "max_mode", -1 },
                 { "n_modes", size_t(0) },
                 { "ppm", size_t(2) },
-                { "ordRich", size_t(3) },
+                { "ord_rich", size_t(3) },
                 { "z_s", T(100) },
                 { "y_s", T(0) },
                 { "n_layers", size_t(1) },

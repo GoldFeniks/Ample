@@ -44,7 +44,7 @@ namespace acstc {
         template<typename T, size_t M, bool B, typename... D>
         auto read_vector(std::istream& stream, const utils::dimensions<D...>& dims) {
             if constexpr (M + 1 < sizeof...(D))
-                if constexpr (dims.template is_variable_dim<M>)
+                if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
                     return utils::make_vector_i(dims.template size<M>(),
                         [&stream, &dims](const size_t& i) mutable {
                             return utils::make_vector_i(dims.template size<M>(i),
@@ -61,7 +61,7 @@ namespace acstc {
                         }
                     );
             else
-                if constexpr (dims.template is_variable_dim<M>) {
+                if constexpr (utils::dimensions<D...>::template is_variable_dim<M>) {
                     types::vector2d_t<T> result;
 
                     for (size_t i = 0; i < dims.template size<M>(); ++i) {

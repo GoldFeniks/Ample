@@ -4,8 +4,9 @@
 #include <cstddef>
 #include <fstream>
 #include <utility>
-#include <type_traits>
+#include <filesystem>
 #include <functional>
+#include <type_traits>
 #include "../utils/types.hpp"
 
 namespace acstc {
@@ -32,8 +33,8 @@ namespace acstc {
 
             public:
 
-                explicit stream_writer_base(const std::string& filename, std::string separator = " ", std::string ending = "\n",
-                        std::ios_base::openmode mode = std::ios_base::out) :
+                explicit stream_writer_base(const std::filesystem::path& filename, std::string separator = " ", std::string ending = "\n",
+                    std::ios_base::openmode mode = std::ios_base::out) :
                     _stream(filename, mode), _separator(std::move(separator)), _ending(std::move(ending)) {}
 
                 void after_write() override {
@@ -61,7 +62,7 @@ namespace acstc {
 
             public:
 
-                explicit binary_writer_base(const std::string& filename) : _stream(filename, std::ios_base::binary) {}
+                explicit binary_writer_base(const std::filesystem::path& filename) : _stream(filename, std::ios_base::binary) {}
 
                 void write_one(const T& value) override {
                     _stream.write(reinterpret_cast<const char*>(&value), sizeof(T));
@@ -181,8 +182,8 @@ namespace acstc {
 
         public:
 
-            explicit text_writer(const std::string& filename, const std::string& separator = " ",
-                    const std::string& ending = "\n") :
+            explicit text_writer(const std::filesystem::path& filename, const std::string& separator = " ",
+                const std::string& ending = "\n") :
                 stream_writer<T, writer_bases::stream_writer_base<T>>(filename, separator, ending) {}
 
         };
@@ -192,7 +193,7 @@ namespace acstc {
 
         public:
 
-            explicit binary_writer(const std::string& filename) :
+            explicit binary_writer(const std::filesystem::path& filename) :
                 stream_writer<T, writer_bases::binary_writer_base<T>>(filename) {}
 
         };

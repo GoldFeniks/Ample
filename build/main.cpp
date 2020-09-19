@@ -31,7 +31,6 @@
 #include "nlohmann/json.hpp"
 #include "utils/callback.hpp"
 #include "utils/verbosity.hpp"
-#include "utils/dimensions.hpp"
 #include "boost/lexical_cast.hpp"
 #include "initial_conditions.hpp"
 #include "utils/progress_bar.hpp"
@@ -51,19 +50,19 @@ static constexpr size_t max_elements = 5;
 acstc::config<types::real_t> config;
 
 enum class field_group : uint64_t {
-    Nothing = 0,
-    Modes = 1 << 1,
-    Solver = 1 << 2,
-    Rays = 1 << 3,
-    Initial = 1 << 4
+    nothing = 0,
+    modes = 1 << 1,
+    solver = 1 << 2,
+    rays = 1 << 3,
+    initial = 1 << 4
 };
 
 auto operator|(const field_group& a, const field_group& b) {
-    return field_group(uint64_t(a) | uint64_t(b));
+    return static_cast<field_group>(static_cast<uint64_t>(a) | static_cast<uint64_t>(b));
 }
 
 bool operator&(const field_group& a, const field_group& b) {
-    return uint64_t(a) & uint64_t(b);
+    return static_cast<uint64_t>(a) & static_cast<uint64_t>(b);
 }
 
 inline bool verbose(const size_t& level) {
@@ -147,14 +146,14 @@ void print_table(const X& x, const Y& y, const V& values, std::stringstream& str
     for (const auto& it : sx)
         widths[0] = std::max(widths[0], static_cast<int>(it.size()));
 
-    const size_t length = std::accumulate(widths.begin(), widths.end(), size_t(0)) + 3 * widths.size() + 1;
+    const auto length = std::accumulate(widths.begin(), widths.end(), static_cast<size_t>(0)) + 3 * widths.size() + 1;
 
-    char* sep_line = new char[length + 1];
+    auto* const sep_line = new char[length + 1];
     sep_line[length] = 0;
 
     std::memset(sep_line, '-', length);
 
-    char* current = sep_line;
+    auto* current = sep_line;
     for (const auto& it : widths) {
         *current = '+';
         current += it + 3;
@@ -163,7 +162,7 @@ void print_table(const X& x, const Y& y, const V& values, std::stringstream& str
 
     stream << "        " << sep_line << '\n';
 
-    char* buffer = new char[length + 1];
+    auto* const buffer = new char[length + 1];
     current = buffer;
     current += sprintf(current, "| %*s |", widths[0], "");
 
@@ -243,7 +242,7 @@ void print_modes(std::stringstream& stream) {
 
     print_field<double>("Mode subset", "mode_subset", stream);
     print_field<size_t>("Points per meter over z", "ppm", stream);
-    print_field<size_t>("Richardson extrapolation order", "ordRich", stream);
+    print_field<size_t>("Richardson extrapolation order", "ord_rich", stream);
 
     if (config.has_frequencies())
         print_values("Frequencies, Hz", config.frequencies(), stream);
@@ -264,7 +263,7 @@ void print_modes(std::stringstream& stream) {
     print_field<bool>("Use additive depth", "additive_depth", stream);
 
     stream << "    Bottom layers (top_speed -> bottom_speed; depth; density):\n";
-    for (const auto& [c1, c2, z, r] : feniks::zip(
+    for (const auto [c1, c2, z, r] : feniks::zip(
         data["bottom_c1s"],
         data["bottom_c2s"],
         data["bottom_layers"],
@@ -279,10 +278,10 @@ void print_modes(std::stringstream& stream) {
     print_values("Beta parameters", data["betas"], stream);
 
     const auto nm = data["max_mode"].get<size_t>();
-    stream << "    Maximal number of modes: " << (nm == size_t(-1) ? "All" : helper.to_string(nm)) << ";\n";
+    stream << "    Maximal number of modes: " << (nm == static_cast<size_t>(-1) ? "All" : helper.to_string(nm)) << ";\n";
 
     const auto mn = data["n_modes"].get<size_t>();
-    stream << "    Required number of modes: " << (mn == size_t(-1) ? "All" : helper.to_string(mn)) << ";\n";
+    stream << "    Required number of modes: " << (mn == static_cast<size_t>(-1) ? "All" : helper.to_string(mn)) << ";\n";
 
     if (config.const_modes())
         stream << "    Number of points over y: " << 
@@ -368,7 +367,7 @@ void print_solver(std::stringstream& stream) {
     print_mesh_spec("x mesh", data["x0"], data["x1"], data["nx"], stream);
     print_mesh_spec("y mesh", data["y0"], data["y1"], data["ny"], stream);
 
-    stream << "    Root approximation coeffitients:\n" << 
+    stream << "    Root approximation coefficients:\n" << 
         "        a: " << helper.to_string(config.a()) << ";\n" <<
         "        b: " << helper.to_string(config.b()) << ";\n" <<
         "        c: " << helper.to_string(config.c()) << ";\n";
@@ -382,16 +381,16 @@ void verbose_config_field_group_parameters(const field_group& group) {
 
     std::stringstream stream;
 
-    if (group & field_group::Modes)
+    if (group & field_group::modes)
         print_modes(stream);
 
-    if (group & field_group::Solver)
+    if (group & field_group::solver)
         print_solver(stream);
 
-    if (group & field_group::Initial)
+    if (group & field_group::initial)
         print_initial_conditions(stream);
 
-    if (group & field_group::Rays) {
+    if (group & field_group::rays) {
         const auto& data = config.data();
 
         stream << "Rays parameters:\n";
@@ -472,7 +471,7 @@ auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
 
 template<typename KS, typename PS>
 auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
-    const auto init = config.init();
+    const auto& init = config.init();
 
     KS ws(k0.size());
     PS as(phi_s.size());
@@ -498,7 +497,7 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
 
 template<typename KS, typename PS, typename KJ>
 auto get_initial_conditions(const KS& k0, const PS& phi_s, const KJ& k_j) {
-    const auto init = config.init();
+    const auto& init = config.init();
 
     if (init == "ray")
         return get_ray_initial_conditions(k0, phi_s, k_j);
@@ -508,7 +507,7 @@ auto get_initial_conditions(const KS& k0, const PS& phi_s, const KJ& k_j) {
 
 template<typename KS, typename PS>
 auto get_initial_conditions(const KS& k0, const PS& phi_s) {
-    const auto init = config.init();
+    const auto& init = config.init();
 
     if (init == "ray")
         return get_ray_initial_conditions(k0, phi_s);
@@ -557,7 +556,7 @@ void write_rays(const RX& rx, const RY& ry, const size_t& n, const size_t& k, W&
 }
 
 template<typename KJ>
-void save_rays(const std::string& filename, const bool binary, const KJ& k_j, const size_t& k) {
+void save_rays(const std::filesystem::path& filename, const bool binary, const KJ& k_j, const size_t& k) {
     const auto na = config.na();
     const auto nl = config.nl();
     const auto nm = k_j.size();
@@ -607,7 +606,7 @@ void solve(S& solver, const I& init, const K& k0,
     solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
 }
 
-const std::set<std::string> available_jobs{
+const std::set<std::string> available_jobs {
     "sel",
     "init",
     "rays",
@@ -621,7 +620,7 @@ class jobs {
 public:
 
     jobs() = default;
-    jobs(std::initializer_list<std::string> init) : _jobs(init) {}
+    jobs(const std::initializer_list<std::string> init) : _jobs(init) {}
 
     void add_job(const std::string& job) {
         if (available_jobs.find(job) == available_jobs.end())
@@ -629,15 +628,15 @@ public:
         _jobs.insert(job);
     }
 
-    bool has_job(const std::string& name) const {
+    [[nodiscard]] bool has_job(const std::string& name) const {
         return _jobs.find(name) != _jobs.end();
     }
 
-    auto size() const {
+    [[nodiscard]] auto size() const {
         return _jobs.size();
     }
 
-    const auto& raw() const {
+    [[nodiscard]] const auto& raw() const {
         return _jobs;
     }
 
@@ -656,24 +655,24 @@ public:
     size_t step, num_workers, buff_size;
     std::filesystem::path output, config_path;
 
-    void command_line_arguments(int argc, const char* argv[]) {
+    void command_line_arguments(const int argc, const char* argv[]) {
         _meta["command_line_arguments"] = types::vector1d_t<const char*>(argv, argv + argc);
     }
 
     void perform() {
-        config.update_from_file(config_path);
+        config.update_from_file(config_path.generic_string());
         acstc::utils::progress_bar::clear_on_end = true;
         std::filesystem::create_directories(output);
 
-        field_group group = field_group::Nothing;
+        field_group group = field_group::nothing;
 
-        _prep("init", field_group::Initial, group);
-        _prep("rays", field_group::Rays, group);
-        _prep("modes", field_group::Modes, group);
-        _prep("solution", field_group::Modes | field_group::Solver | field_group::Initial, group);
+        _prep("init", field_group::initial, group);
+        _prep("rays", field_group::rays, group);
+        _prep("modes", field_group::modes, group);
+        _prep("solution", field_group::modes | field_group::solver | field_group::initial, group);
 
         if (jobs.has_job("impulse"))
-            group = group | field_group::Modes | field_group::Solver | field_group::Initial;
+            group = group | field_group::modes | field_group::solver | field_group::initial;
 
         verbose_config_field_group_parameters(group);
 
@@ -682,7 +681,7 @@ public:
         _meta["jobs"] = jobs.raw();
         _meta["phi_s"] = json::array();
         _meta["outputs"] = json::array();
-        _meta["original_config_path"] = config_path;
+        _meta["original_config_path"] = config_path.generic_string();
 
         const auto start = std::chrono::system_clock::now();
         _pick_writer();
@@ -732,7 +731,7 @@ public:
             const auto values = acstc::utils::make_vector(
                 feniks::zip(config.receiver_depth().points(), config.receiver_depth().data()),
                 [](const auto& value) { 
-                    const auto [xy, z] = value;
+                    const auto& [xy, z] = value;
                     const auto [x, y] = xy;
                     return std::make_tuple(x, y, z);
                 }
@@ -759,19 +758,19 @@ private:
     types::vector1d_t<size_t> _n_modes;
 
     template<typename V>
-    json _dimensions(const V& values) {
+    static json _dimensions(const V& values) {
         return acstc::utils::make_vector(values, [](const auto& value) { return json{ {"n", value } }; });
-    };
+    }
 
     template<typename V>
-    json _dimension(const V& values) {
+    static json _dimension(const V& values) {
         return {
             { "n", values.size() },
             { "values", values }
         };
-    };
+    }
 
-    json _dimension(const types::real_t& a, const types::real_t& b, const size_t& n) {
+    static json _dimension(const types::real_t& a, const types::real_t& b, const size_t& n) {
         return {
             { "n", n },
             {
@@ -816,7 +815,7 @@ private:
         };
     }
 
-    void _prep(const char* name, const field_group& params, field_group& group) {
+    void _prep(const char* name, const field_group& params, field_group& group) const {
         if (jobs.has_job(name)) {
             std::filesystem::create_directories(output / name);
             group = group | params;
@@ -824,7 +823,7 @@ private:
     }
 
     template<typename T>
-    T _add_extension(T path) const {
+    [[nodiscard]] T _add_extension(T path) const {
         path += binary ? ".bin" : ".txt";
         return path;
     }
@@ -887,7 +886,7 @@ private:
                 const auto nr = depth.points().size();
 
                 _impulse_result = new types::vector2d_t<types::complex_t>(nr,
-                    types::vector1d_t<types::complex_t>(config.frequencies().size(), types::real_t(0))
+                    types::vector1d_t<types::complex_t>(config.frequencies().size(), static_cast<types::real_t>(0))
                 );
 
                 _ix = new types::vector1d_t<size_t>(nr);
@@ -933,7 +932,7 @@ private:
                     _s = _source_spectrum[fi];
 
                 const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
-                if (!k0.size())
+                if (k0.empty())
                     continue;
 
                 _owner._meta["f"].push_back(f);
@@ -1007,7 +1006,7 @@ private:
 
                 _owner._meta["tau"] = tau;
 
-                save_impulse(_owner._add_extension(_owner.output / "impulse"), impulse, _owner.binary);
+                save_impulse(_owner._add_extension(_owner.output / "impulse").generic_string(), impulse, _owner.binary);
 
                 delete _ix;
                 delete _iy;
@@ -1143,7 +1142,7 @@ private:
                         ir=config.reference_index()
                     ](const auto& mx, const auto& data) mutable {
                         const auto x = mx + config.x0();
-                        for (; last.size() && li < ix.size() && std::get<0>(depth.points(ix[li])) <= x; ++li) {
+                        for (; !last.empty() && li < ix.size() && std::get<0>(depth.points(ix[li])) <= x; ++li) {
                             const auto& [px, py] = depth.points(ix[li]);
                             const auto& [ya, yb] = acstc::utils::find_indices(iy, py);
 
@@ -1205,7 +1204,7 @@ private:
 void validate(boost::any& v, 
               const std::vector<std::string>& values,
               jobs*, int) {
-    if (!values.size())
+    if (values.empty())
         throw po::validation_error(po::validation_error::at_least_one_value_required);
 
     if (v.empty()) {
@@ -1214,7 +1213,7 @@ void validate(boost::any& v,
             jobs.add_job(it);
         v = boost::any(jobs);
     } else {
-        ::jobs& jobs = boost::any_cast<::jobs&>(v);
+        auto& jobs = boost::any_cast<::jobs&>(v);
         for (const auto& it : values)
             jobs.add_job(it);
     }
@@ -1246,7 +1245,7 @@ int main(int argc, const char* argv[]) {
         size_t num_workers, buff_size;
         computation.add_options()
             ("workers,w", po::value(&jobs_config.num_workers)->default_value(1), "Number of workers for computation")
-            ("buff,b", po::value(&jobs_config.buff_size)->default_value(100), "Buff size to be used during multithreaded computation");
+            ("buff,b", po::value(&jobs_config.buff_size)->default_value(100), "Buff size to be used during multi-threaded computation");
 
         po::options_description options;
         options.add_options()

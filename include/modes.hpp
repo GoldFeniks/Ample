@@ -247,7 +247,7 @@ namespace acstc {
 
             n_m.iModesSubset = config.mode_subset();
             n_m.ppm = static_cast<unsigned int>(config.ppm());
-            n_m.ordRich = static_cast<unsigned int>(config.ordRich());
+            n_m.ordRich = static_cast<unsigned int>(config.ord_rich());
             n_m.zr.push_back(z);
             n_m.f = config.f();
             n_m.M_betas = config.betas();
