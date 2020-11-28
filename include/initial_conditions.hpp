@@ -7,13 +7,14 @@
 #include <algorithm>
 #include <functional>
 #include <type_traits>
+#include "feniks/zip.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {
 
-    namespace __impl {
+    namespace _impl {
 
         template<typename T, typename V>
         auto find_less(const T& value, const V& values, size_t i) {
@@ -118,28 +119,28 @@ namespace acstc {
         void interval(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir);
 
-            __impl::taper_interval(il, jl, ir, jr, coords, values);
+            _impl::taper_interval(il, jl, ir, jr, coords, values);
         }
 
         template<typename C, typename A, typename V>
         void interval_all(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir);
 
-            __impl::taper_interval_all(il, jl, ir, jr, coords, values);
+            _impl::taper_interval_all(il, jl, ir, jr, coords, values);
         }
 
         template<typename C, typename A, typename V>
         void tail(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir);
 
-            __impl::taper_tail(il, jl, ir, jr, coords, values);
+            _impl::taper_tail(il, jl, ir, jr, coords, values);
         }
 
         template<typename C, typename A, typename V>
         void tail_all(const size_t& il, const size_t& ir, const C& coords, const A&, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir);
 
-            __impl::taper_tail_all(il, jl, ir, jr, coords, values);
+            _impl::taper_tail_all(il, jl, ir, jr, coords, values);
         }
 
     private:
@@ -165,28 +166,28 @@ namespace acstc {
         void interval(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir, angles);
 
-            __impl::taper_interval(il, jl, ir, jr, angles, values);
+            _impl::taper_interval(il, jl, ir, jr, angles, values);
         }
 
         template<typename C, typename A, typename V>
         void interval_all(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir, angles);
 
-            __impl::taper_interval_all(il, jl, ir, jr, angles, values);
+            _impl::taper_interval_all(il, jl, ir, jr, angles, values);
         }
 
         template<typename C, typename A, typename V>
         void tail(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir, angles);
 
-            __impl::taper_tail(il, jl, ir, jr, angles, values);
+            _impl::taper_tail(il, jl, ir, jr, angles, values);
         }
 
         template<typename C, typename A, typename V>
         void tail_all(const size_t& il, const size_t& ir, const C&, const A& angles, V& values) const {
             const auto [jl, jr] = _get_boundaries(il, ir, angles);
 
-            __impl::taper_tail_all(il, jl, ir, jr, angles, values);
+            _impl::taper_tail_all(il, jl, ir, jr, angles, values);
         }
 
     private:
@@ -221,7 +222,7 @@ namespace acstc {
 
         template<typename V, typename F, typename... Args>
         static auto create(const V& xs, const F& func, const Args&... args) {
-            const auto zip = utils::zip(std::forward<const Args>(args)...);
+            const auto zip = feniks::zip(std::forward<const Args>(args)...);
             types::vector2d_t<Val> result(zip.size());
             for (size_t i = 0; i < result.size(); ++i) {
                 result[i].reserve(xs.size());
@@ -289,8 +290,8 @@ namespace acstc {
             const auto k = std::min(size_t(l1 * std::cos(as[i]) / x), nl - 1);
             for (j = 0; j < k_j.size(); ++j)
                 li[j][i] = x > rx[j][i][k]
-                    ? __impl::find_greater(x, rx[j][i], k)
-                    : __impl::find_less(x, rx[j][i], k);
+                    ? _impl::find_greater(x, rx[j][i], k)
+                    : _impl::find_less(x, rx[j][i], k);
         }
 
         const auto hl = l1 / (nl - 1);

@@ -217,85 +217,6 @@ namespace acstc {
 
         }// namespace __impl
 
-        template<typename... T>
-        class zip {
-
-        public:
-
-            explicit zip(const T&... values)
-                : _values(std::forward<const T>(values)...), _size(std::get<0>(_values).size()) {}
-
-            auto begin() const {
-                return iterator(*this);
-            }
-
-            auto end() const {
-                return iterator(*this, size());
-            }
-
-            auto size() const {
-                return _size;
-            }
-
-            auto operator[](const size_t& index) const {
-                return __impl::gather_values<N>::get(index, _values);
-            }
-
-        private:
-
-            const std::tuple<const T&...> _values;
-            const size_t _size;
-
-            static constexpr auto N = sizeof...(T);
-
-            class iterator {
-
-            public:
-
-                using iterator_category = std::forward_iterator_tag;
-                using value_type = decltype(std::declval<zip>()[0]);
-                using difference_type = size_t;
-                using pointer = value_type*;
-                using reference = value_type&;
-
-                explicit iterator(const zip& owner, const size_t index = 0) : _owner(owner), _index(index) {}
-
-                bool operator==(const iterator& other) const {
-                    return _index == other._index;
-                }
-
-                bool operator!=(const iterator& other) const {
-                    return !(*this == other);
-                }
-
-                auto operator*() const {
-                    return _owner[_index];
-                }
-
-                auto operator->() const {
-                    return _owner[_index];
-                }
-
-                iterator& operator++() {
-                    ++_index;
-                    return *this;
-                }
-
-                iterator operator++(int) {
-                    auto res = iterator(_owner, _index);
-                    ++_index;
-                    return res;
-                }
-
-            private:
-
-                const zip& _owner;
-                size_t _index = 0;
-
-            };
-
-        };
-
         template<typename F>
         class function_as_vector {
 
@@ -397,7 +318,7 @@ namespace acstc {
         }
 
         template<typename It>
-        std::string join(It begin, const It& end, const std::string& sep = ' ') {
+        std::string join_it(It begin, const It& end, const std::string& sep = " ") {
             std::ostringstream result;
 
             if (begin != end)
@@ -406,6 +327,13 @@ namespace acstc {
             while (begin != end)
                 result << sep << *begin++;
 
+            return result.str();
+        }
+
+        template<typename First, typename... Tail>
+        std::string join(const First& first, const Tail&... tail) {
+            std::ostringstream result;
+            ((result << first), ..., (result << tail));
             return result.str();
         }
 

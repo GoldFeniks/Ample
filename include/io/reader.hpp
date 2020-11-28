@@ -2,62 +2,79 @@
 #include <tuple>
 #include <vector>
 #include <istream>
+#include <sstream>
 #include "../utils/types.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/assert.hpp"
 #include "../utils/convertors.hpp"
 #include "../utils/dimensions.hpp"
 
 namespace acstc {
 
-    namespace __impl {
-
-        template<typename... T>
-        auto find_something(std::istream& stream, const T&... chars) {
-            auto c = stream.peek();
-            while (((c != chars) && ...)) {
-                if (c == ' ' || c == '\t')
-                    while (c == ' ' || c == '\t') {
-                        stream.get();
-                        c = stream.peek();
-                    }
-                else
-                    return true;
-            }
-            return false;
-        }
+    namespace _impl {
 
         template<typename T, typename V>
-        auto read_line(std::istream& stream) {
+        auto read_table_line(std::istream& stream) {
             types::vector1d_t<V> data;
+
+            std::string line;
+            std::getline(stream, line);
+            stream >> std::ws;
+
+            if (line.empty())
+                return std::make_tuple(T(), data);
+
+            std::istringstream line_stream(line);
+
             T row;
             V buff;
-            stream >> row;
-            while (find_something(stream, '\r', '\n', EOF)) {
-                stream >> buff;
+            line_stream >> row;
+            while (!line_stream.eof()) {
+                line_stream >> buff;
+                utils::dynamic_assert(!line_stream.fail(), "Incorrect data in file");
+
                 data.push_back(buff);
+                line_stream >> std::ws;
             }
-            stream.get();
+
             return std::make_tuple(row, data);
+        }
+
+        template<typename T>
+        void read_line(std::istream& stream, types::vector1d_t<T>& data) {
+            std::string line;
+            std::getline(stream, line);
+            stream >> std::ws;
+
+            std::istringstream line_stream(line);
+            T value;
+            while (!line_stream.eof()) {
+                line_stream >> value;
+                utils::dynamic_assert(!line_stream.fail(), "Incorrect data in file");
+
+                data.push_back(value);
+                line_stream >> std::ws;
+            }
         }
 
 
         template<typename T, size_t M, bool B, typename... D>
-        auto read_vector(std::istream& stream, const utils::dimensions<D...>& dims) {
+        auto read_vector(std::istream& stream, const utils::dimensions<D...>& dims, size_t& line) {
             if constexpr (M + 1 < sizeof...(D))
                 if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
                     return utils::make_vector_i(dims.template size<M>(),
-                        [&stream, &dims](const size_t& i) mutable {
+                        [&stream, &dims, &line](const size_t& i) mutable {
                             return utils::make_vector_i(dims.template size<M>(i),
-                                [&stream, &dims](const auto&) {
-                                    return read_vector<T, M + 1, B, D...>(stream, dims);
+                                [&stream, &dims, &line](const auto&) mutable {
+                                    return read_vector<T, M + 1, B, D...>(stream, dims, line);
                                 }
                             );
                         }
                     );
                 else
                     return utils::make_vector_i(dims.template size<M>(),
-                        [&stream, &dims](const auto&) {
-                            return read_vector<T, M + 1, B, D...>(stream, dims);
+                        [&stream, &dims, &line](const auto&) mutable {
+                            return read_vector<T, M + 1, B, D...>(stream, dims, line);
                         }
                     );
             else
@@ -65,23 +82,37 @@ namespace acstc {
                     types::vector2d_t<T> result;
 
                     for (size_t i = 0; i < dims.template size<M>(); ++i) {
-                        result.emplace_back(dims.template size<M>(i));
-                        if constexpr (B)
+                        result.emplace_back();
+                        if constexpr (B) {
+                            result.back().resize(dims.template size<M>(i));
                             stream.read(reinterpret_cast<char*>(result.back().data()), sizeof(T) * dims.template size<M>(i));
-                        else
-                            for (size_t j = 0; j < dims.template size<M>(i); ++j)
-                                stream >> result.back()[j];
+                            utils::dynamic_assert(stream.gcount() == sizeof(T) * dims.template size<M>(i), "Insufficient data in file");
+                        }
+                        else {
+                            read_line(stream, result.back());
+                            utils::dynamic_assert(result.back().size() == dims.template size<M>(i),
+                                                  utils::join("Incorrect number of elements on line ", line, ". Expected ",
+                                                              dims.template size<M>(i), ", but got ", result.back().size()));
+                            ++line;
+                        }
                     }
 
                     return result;
                 } else {
-                    types::vector1d_t<T> result(dims.template size<M>());
+                    types::vector1d_t<T> result;
 
-                    if constexpr (B)
+                    if constexpr (B) {
+                        result.resize(dims.template size<M>());
                         stream.read(reinterpret_cast<char*>(result.data()), sizeof(T) * dims.template size<M>());
-                    else
-                        for (size_t j = 0; j < dims.template size<M>(); ++j)
-                            stream >> result[j];
+                        utils::dynamic_assert(stream.gcount() == sizeof(T) * dims.template size<M>(), "Insufficient data in file");
+                    }
+                    else {
+                        read_line(stream, result);
+                        utils::dynamic_assert(result.size() == dims.template size<M>(),
+                                              utils::join("Incorrect number of elements on line ", line, ". Expected ",
+                                                          dims.template size<M>(), ", but got ", result.size()));
+                        ++line;
+                    }
 
                     return result;
                 }
@@ -104,14 +135,15 @@ namespace acstc {
 
         static auto read(std::istream& stream) {
             read_data<T, V> data;
-            std::tie(std::ignore, data.cols) = __impl::read_line<T, V>(stream);
-            while (__impl::find_something(stream, EOF)) {
-                auto [val, row] = __impl::read_line<T, V>(stream);
+            std::tie(std::ignore, data.cols) = _impl::read_table_line<T, V>(stream);
+            while (!(stream.eof() || stream.fail())) {
+                auto [val, row] = _impl::read_table_line<T, V>(stream);
                 if (row.size()) {
                     data.rows.push_back(std::move(val));
                     data.data.push_back(std::move(row));
                 }
             }
+
             return data;
         }
 
@@ -121,6 +153,18 @@ namespace acstc {
 
     };
 
+    template<typename T>
+    void read_binary_values(std::istream& stream, T* data, const size_t& count) {
+        stream.read(reinterpret_cast<char*>(data), sizeof(T) * count);
+        utils::dynamic_assert(stream.gcount() == sizeof(T) * count, "Insufficient data in file");
+
+    }
+
+    template<typename T>
+    void read_binary_values(std::istream&& stream, T* data, const size_t& count) {
+        read_binary_values(stream, data, count);
+    }
+
     template<typename T, typename V = T, typename S = uint32_t>
     class binary_table_reader {
 
@@ -128,16 +172,22 @@ namespace acstc {
 
         static auto read(std::istream& stream) {
             S n, m;
-            stream.read(reinterpret_cast<char*>(&n), sizeof(S));
-            stream.read(reinterpret_cast<char*>(&m), sizeof(S));
+            read_binary_values(stream, &n, 1);
+            read_binary_values(stream, &m, 1);
+
             read_data<T, V> data;
             data.data.resize(n, types::vector1d_t<V>(m));
             data.rows.resize(n);
             data.cols.resize(m);
-            stream.read(reinterpret_cast<char*>(data.rows.data()), sizeof(T) * n);
-            stream.read(reinterpret_cast<char*>(data.cols.data()), sizeof(T) * m);
+
+            read_binary_values(stream, data.rows.data(), n);
+            read_binary_values(stream, data.cols.data(), m);
+
             for (auto& it : data.data)
-                stream.read(reinterpret_cast<char*>(it.data()), sizeof(V) * m);
+                read_binary_values(stream, it.data(), m);
+
+            utils::dynamic_assert(stream.eof(), "Extra data in file");
+
             return data;
         }
 
@@ -158,9 +208,14 @@ namespace acstc {
             T a;
             V b;
 
-            while (__impl::find_something(stream, EOF)) {
-                stream >> a >> b;
+            while (!stream.eof()) {
+                stream >> a >> std::ws;
+                utils::dynamic_assert(!stream.fail(), "Incorrect data in file");
+                utils::dynamic_assert(!stream.eof(), "Insufficient data in file");
                 first.push_back(a);
+
+                stream >> b;
+                utils::dynamic_assert(!stream.fail(), "Incorrect data in file");
                 second.push_back(b);
             }
 
@@ -204,12 +259,20 @@ namespace acstc {
 
         template<size_t M = 0, typename... D>
         static auto read(std::istream&& stream, const utils::dimensions<D...>& dims) {
-            return __impl::read_vector<T, M, false, D...>(stream, dims);
+            size_t line = 1;
+            auto result = _impl::read_vector<T, M, false, D...>(stream, dims, line);
+            stream >> std::ws;
+            utils::dynamic_assert(stream.eof(), "Extra data in file");
+            return result;
         }
 
         template<size_t M = 0, typename... D>
         static auto binary_read(std::istream&& stream, const utils::dimensions<D...>& dims) {
-            return __impl::read_vector<T, M, true, D...>(stream, dims);
+            size_t line = 0;
+            auto result = _impl::read_vector<T, M, true, D...>(stream, dims, line);
+            stream.get();
+            utils::dynamic_assert(stream.eof(), "Extra data in file");
+            return result;
         }
 
     };

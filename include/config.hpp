@@ -193,7 +193,7 @@ namespace acstc {
             template<size_t M>
             static auto check_size(const size_t& n, const size_t& m) {
                 if (n != m)
-                    throw std::logic_error(
+                    throw std::runtime_error(
                         std::string("Wrong dimension size at level ") +
                         std::to_string(M) + 
                         ". Expected " +
@@ -292,43 +292,47 @@ namespace acstc {
             for (const auto& it : _data["input_data"]) {
                 const auto type = it["type"].template get<std::string>();
 
-                if (type == "bathymetry") {
-                    _bathymetry = _create_bathymetry(it, _path);
-                    continue;
+                try {
+                    if (type == "bathymetry") {
+                        _bathymetry = _create_bathymetry(it, _path);
+                        continue;
+                    }
+
+                    if (type == "hydrology") {
+                        _hydrology = _create_hydrology(it, _path);
+                        continue;
+                    }
+
+                    if (type == "receivers") {
+                        _receiver_depth = _create_receiver_depth(it, _path);
+                        continue;
+                    }
+
+                    if (type == "source_function") {
+                        std::tie(_times, _source_function) = _create_source_function<T>(it, _path);
+                        continue;
+                    }
+
+                    if (type == "source_spectrum") {
+                        if (_frequencies.has_value())
+                            throw std::logic_error("Multiple values given for frequencies");
+
+                        std::tie(_frequencies, _source_spectrum) = _create_source_function<std::complex<T>>(it, _path);
+                        continue;
+                    }
+
+                    if (type == "frequencies") {
+                        if (_frequencies.has_value())
+                            throw std::logic_error("Multiple values given for frequencies");
+
+                        _frequencies = _create_frequences(it, _path);
+                        continue;
+                    }
+                } catch (const std::runtime_error& error) {
+                    throw std::runtime_error(utils::join("Error while parsing ", type, ": ", error.what()));
                 }
 
-                if (type == "hydrology") {
-                    _hydrology = _create_hydrology(it, _path);
-                    continue;
-                }
-
-                if (type == "receivers") {
-                    _receiver_depth = _create_receiver_depth(it, _path);
-                    continue;
-                }
-
-                if (type == "source_function") {
-                    std::tie(_times, _source_function) = _create_source_function<T>(it, _path);
-                    continue;
-                }
-
-                if (type == "source_spectrum") {
-                    if (_frequencies.has_value())
-                        throw std::logic_error("Multiple values given for frequencies");
-
-                    std::tie(_frequencies, _source_spectrum) = _create_source_function<std::complex<T>>(it, _path);
-                    continue;
-                }
-
-                if (type == "frequencies") {
-                    if (_frequencies.has_value())
-                        throw std::logic_error("Multiple values given for frequencies");
-
-                    _frequencies = _create_frequences(it, _path);
-                    continue;
-                }
-
-                throw std::logic_error(std::string("Unknown input data type \"") + type + "\"");
+                throw std::runtime_error(std::string("Unknown input data type \"") + type + "\"");
             }
             _fill_coefficients(_data["coefficients"]);
         }
