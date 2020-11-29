@@ -338,8 +338,8 @@ namespace acstc {
             const auto il = std::min(size_t((std::get<0>(pairs[j][0]) - yl) / hy) + 1, ny - 1);
             const auto ir = std::min(size_t((std::get<0>(pairs[j].back()) - yl) / hy), ny - 1);
 
-            utils::__impl::linear_interpolation::line(yy[il], yy[ir], coords, values, result[j].begin() + il, result[j].begin() + ir + 1);
-            utils::__impl::linear_interpolation::line(yy[il], yy[ir], coords, as, aa.begin() + il, aa.begin() + ir + 1);
+            utils::_impl::linear_interpolation::line(yy[il], yy[ir], coords, values, result[j].begin() + il, result[j].begin() + ir + 1);
+            utils::_impl::linear_interpolation::line(yy[il], yy[ir], coords, as, aa.begin() + il, aa.begin() + ir + 1);
 
             tapering.interval(il, ir, yy, aa, result[j]);
 

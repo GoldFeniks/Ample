@@ -232,6 +232,14 @@ namespace acstc {
                 return _size;
             }
 
+            const auto front() const {
+                return _func(0);
+            }
+
+            const auto back() const {
+                return _func(_size - 1);
+            }
+
         private:
 
             const F _func;
