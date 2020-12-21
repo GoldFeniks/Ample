@@ -35,6 +35,7 @@
 #include "initial_conditions.hpp"
 #include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
+#include "utils/multi_optional.hpp"
 #include "boost/program_options.hpp"
 
 namespace types = acstc::types;
@@ -120,6 +121,18 @@ struct strings<std::tuple<T...>> {
         return result;
     }
 
+};
+
+template<typename T>
+struct strings<types::point<T>> {
+
+    static auto get(const types::point<T>& point) {
+        return types::vector1d_t<std::string>{
+            helper.to_string(point.x),
+            helper.to_string(point.y),
+            helper.to_string(point.z)
+        };
+    }
 };
 
 template<typename V>
@@ -346,17 +359,14 @@ void print_solver(std::stringstream& stream) {
 
     stream << "Solver parameters:\n";
 
-    const auto& receivers = config.receiver_depth();
-    const auto rn = std::min(max_elements, receivers.data().size());
-    stream << "    Receivers:\n";
-    print_table(acstc::utils::mesh_1d<size_t>(0, rn - 1, rn), types::vector1d_t<char>{ 'x', 'y', 'z' },
-        acstc::utils::make_vector_i(rn, 
-            [&receivers](const size_t& i) {
-                const auto& [x, y] = receivers.points()[i];
-                return std::make_tuple(x, y, receivers.data()[i]);
-            }
-        ), stream, rn < receivers.data().size()
-    );
+    if (config.has_receivers()) {
+        const auto& receivers = config.receivers();
+        const auto rn = std::min(max_elements, receivers.size());
+        stream << "    Receivers:\n";
+        print_table(acstc::utils::mesh_1d<size_t>(0, rn - 1, rn), types::vector1d_t<char>{'x', 'y', 'z'},
+                    receivers, stream, rn < receivers.size()
+        );
+    }
 
     print_field<types::real_t>("Source z coordinate", "y_s", stream);
     print_field<size_t>("Width of smooth border over edges", "border_width", stream);
@@ -409,7 +419,7 @@ auto pass_tapering(const F& func) {
     if (type == "angled")
         return func(acstc::angled_tapering(vl, vr));
 
-    throw std::logic_error(std::string("Unknown tapering type: ") + type);
+    throw std::runtime_error(std::string("Unknown tapering type: ") + type);
 }
 
 template<typename KS, typename PS>
@@ -425,7 +435,7 @@ auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s) {
-    auto [k_j, phi_j] = config.create_const_modes<types::real_t>(config.n_modes(), verbose(2));
+    auto [k_j, phi_j] = config.create_const_modes<types::real_t>({ config.z_s() }, config.n_modes(), verbose(2));
 
     if (k_j.size() > k0.size())
         k_j.erase_last(k_j.size() - k0.size());
@@ -492,7 +502,7 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
             }
         );
 
-    throw std::logic_error(std::string("Unknown initial conditions type: ") + init);
+    throw std::runtime_error(std::string("Unknown initial conditions type: ") + init);
 }
 
 template<typename KS, typename PS, typename KJ>
@@ -528,10 +538,12 @@ void write_modes(const acstc::utils::linear_interpolated_data_2d<types::real_t, 
             writer(it);
 }
 
-template<typename KV, typename PV, typename W>
-void write_modes(const KV& k_j, const PV& phi_j, W&& writer) {
-    write_modes(k_j, writer);
-    write_modes(phi_j, writer);
+template<typename V, typename W>
+void write_modes(const acstc::utils::linear_interpolated_data_3d<types::real_t, V>& modes, W&& writer) {
+    for (size_t i = 0; i < modes.size(); ++i)
+        for (const auto& field : modes[i].data())
+            for (const auto& row : field)
+                writer(row);
 }
 
 template<typename V, typename W>
@@ -593,7 +605,7 @@ void save_impulse(const std::string& filename,
 template<typename S, typename K, typename V, typename I, typename C>
 void solve(S& solver, const I& init, const K& k0,
            const acstc::utils::linear_interpolated_data_1d<types::real_t, V>& k_j, 
-           const acstc::utils::linear_interpolated_data_1d<types::real_t>& phi_j,
+           const acstc::utils::linear_interpolated_data_2d<types::real_t>& phi_j,
            C&& callback, const size_t& num_workers, const size_t& buff_size) {
     solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
 }
@@ -601,9 +613,9 @@ void solve(S& solver, const I& init, const K& k0,
 template<typename S, typename K, typename V, typename I, typename C>
 void solve(S& solver, const I& init, const K& k0,
            const acstc::utils::linear_interpolated_data_2d<types::real_t, V>& k_j, 
-           const acstc::utils::linear_interpolated_data_2d<types::real_t>& phi_j,
+           const acstc::utils::linear_interpolated_data_3d<types::real_t>& phi_j,
            C&& callback, const size_t& num_workers, const size_t& buff_size) {
-    solver.solve(init, k0, k_j, phi_j, callback, config.border_width(), config.past_n(), num_workers, buff_size);
+    solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
 }
 
 const std::set<std::string> available_jobs {
@@ -668,7 +680,8 @@ public:
 
         _prep("init", field_group::initial, group);
         _prep("rays", field_group::rays, group);
-        _prep("modes", field_group::modes, group);
+        _prep("modes", "phi_j", field_group::modes, group);
+        _prep("modes", "k_j", field_group::modes, group);
         _prep("solution", field_group::modes | field_group::solver | field_group::initial, group);
 
         if (jobs.has_job("impulse"))
@@ -691,16 +704,17 @@ public:
 
         const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / step + 1);
         const auto dimy = _dimension(config.y0(), config.y1(), config.ny());
+        const auto dimz = _dimension(config.z0(), config.z1(), config.nz());
         const auto dimm = _dimensions(_n_modes);
 
         const auto files = acstc::utils::make_vector(_meta["f"].get<types::vector1d_t<types::real_t>>(), 
             [this](const auto& value) { return _add_extension(helper.to_string(value)); });
 
         if (jobs.has_job("sel"))
-            _meta["outputs"].push_back(_get_meta_for("sel", { dimx, dimy }, _add_extension(std::string("sel"))));
+            _meta["outputs"].push_back(_get_meta_for("sel", { dimx, dimy, dimz }, _add_extension(std::string("sel"))));
 
         if (jobs.has_job("init"))
-            _save_meta_for("init", { dimm, dimy }, files);
+            _save_meta_for("init", { dimm, dimy }, files);        
 
         if (jobs.has_job("rays"))
             _save_meta_for("rays", { 
@@ -711,40 +725,47 @@ public:
             );
 
         if (jobs.has_job("modes"))
-            if (config.const_modes())
-                _save_meta_for("modes", config.complex_modes() ? "complex_modes" : "real_modes",
-                    { 
+            if (config.const_modes()) {
+                _save_meta_for("phi_j",
+                    {
+                        dimm,
+                        _dimension(config.y0(), config.y1(), config.mny()),
+                        _dimension(config.z0(), config.z1(), config.mnz())
+                    }, files
+                );
+                _save_meta_for("k_j", config.complex_modes() ? "complex_k_j" : "k_j",
+                    {
                         dimm,
                         _dimension(config.y0(), config.y1(), config.mny())
                     }, files
                 );
-            else
-                _save_meta_for("modes", config.complex_modes() ? "complex_modes" : "real_modes",
-                    { 
+            } else {
+                _save_meta_for("phi_j",
+                    {
                         dimm,
                         _dimension(config.x0(), config.x1(), config.mnx()),
-                        _dimension(config.y0(), config.y1(), config.mny())
+                        _dimension(config.y0(), config.y1(), config.mny()),
+                        _dimension(config.z0(), config.z1(), config.mnz())
                     }, files
                 );
+                _save_meta_for("k_j", config.complex_modes() ? "complex_k_j" : "k_j",
+                    {
+                           dimm,
+                           _dimension(config.x0(), config.x1(), config.mnx()),
+                           _dimension(config.y0(), config.y1(), config.mny())
+                    }, files
+                );
+            }
 
-        if (jobs.has_job("impulse")) {
-            const auto values = acstc::utils::make_vector(
-                feniks::zip(config.receiver_depth().points(), config.receiver_depth().data()),
-                [](const auto& value) { 
-                    const auto& [xy, z] = value;
-                    const auto [x, y] = xy;
-                    return std::make_tuple(x, y, z);
-                }
-            );
+        if (jobs.has_job("impulse"))
             _meta["outputs"].push_back(_get_meta_for("impulse", { 
-                    _dimension(values),
+                    _dimension(config.receivers()),
                     _dimension(config.times().front(), config.times().back(), config.times().size())
                 }, _add_extension(std::string("impulse")))
             );
-        }
 
         if (jobs.has_job("solution"))
-            _save_meta_for("solution", { _n_modes, dimx, dimy }, files);
+            _save_meta_for("solution", { _n_modes, dimx, dimy, dimz }, files);
 
         std::ofstream out(output / "meta.json");
         out << std::setw(4) << _meta << std::endl;
@@ -759,7 +780,7 @@ private:
 
     template<typename V>
     static json _dimensions(const V& values) {
-        return acstc::utils::make_vector(values, [](const auto& value) { return json{ {"n", value } }; });
+        return acstc::utils::make_vector(values, [](const auto& value) { return json{ { "n", value } }; });
     }
 
     template<typename V>
@@ -792,9 +813,9 @@ private:
         const auto filename = output / path / "meta.json";
         std::ofstream out(filename);
 
-        out << std::setw(4) << _get_meta_for(type, dimensions, files);
+        out << std::setw(4) << _get_meta_for(type, dimensions, files);        
 
-        _meta["outputs"].push_back(filename);
+        _meta["outputs"].push_back(filename.parent_path().filename() / filename.filename());
     }
 
     json _get_meta_for(const std::string& type, const json& dimensions, const std::string& file) {
@@ -806,7 +827,7 @@ private:
         };
     }
 
-    json _get_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
+    json _get_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {        
         return {
             { "type", type },
             { "dimensions", dimensions },
@@ -815,11 +836,15 @@ private:
         };
     }
 
-    void _prep(const char* name, const field_group& params, field_group& group) const {
+    void _prep(const char* name, const char* folder, const field_group& params, field_group& group) const {
         if (jobs.has_job(name)) {
-            std::filesystem::create_directories(output / name);
+            std::filesystem::create_directories(output / folder);
             group = group | params;
         }
+    }
+
+    void _prep(const char* name, const field_group& params, field_group& group) const {
+        _prep(name, name, params, group);
     }
 
     template<typename T>
@@ -882,8 +907,8 @@ private:
             if (has_impulse) {
                 _load_source_spectrum();
 
-                const auto& depth = config.receiver_depth();
-                const auto nr = depth.points().size();
+                const auto& receivers = config.receivers();
+                const auto nr = receivers.size();
 
                 _impulse_result = new types::vector2d_t<types::complex_t>(nr,
                     types::vector1d_t<types::complex_t>(config.frequencies().size(), static_cast<types::real_t>(0))
@@ -892,26 +917,27 @@ private:
                 _ix = new types::vector1d_t<size_t>(nr);
                 std::iota(_ix->begin(), _ix->end(), 0);
                 std::sort(_ix->begin(), _ix->end(),
-                    [&depth](const auto& a, const auto& b) {
-                        return std::get<0>(depth.points(a)) < std::get<0>(depth.points(b));
+                    [&receivers](const auto& a, const auto& b) {
+                        return receivers[a].x < receivers[b].x;
                     }
                 );
 
                 _iy = new types::vector1d_t<types::real_t>(acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny()));
+                _iz = new types::vector1d_t<types::real_t>(acstc::utils::mesh_1d(config.z0(), config.z1(), config.nz()));
             }
 
             if (has_sel) {
                 if (!_source_spectrum.has_value())
                     _load_source_spectrum();
 
-                _sel_result = new types::vector2d_t<types::real_t>(
+                _sel_result = new types::vector3d_t<types::real_t>(
                     config.nx() / _owner.step + 1,
-                    types::vector1d_t<types::real_t>(config.ny(), 0)
+                    types::vector2d_t<types::real_t>(config.ny(), types::vector1d_t<types::real_t>(config.nz(), 0))
                 );
 
-                _sel_buffer = new types::vector2d_t<types::complex_t>(
+                _sel_buffer = new types::vector3d_t<types::complex_t>(
                     config.nx() / _owner.step + 1,
-                    types::vector1d_t<types::complex_t>(config.ny(), 0)
+                    types::vector2d_t<types::complex_t>(config.ny(), types::vector1d_t<types::complex_t>(config.nz(), 0))
                 );
             }
 
@@ -951,9 +977,10 @@ private:
                 }
 
                 if (has_sel) {
-                    for (auto [vs, bs] : feniks::zip(*_sel_result, *_sel_buffer))
-                        for (auto [v, b] : feniks::zip(vs, bs))
-                            v += std::pow(std::abs(b * _s), 2);
+                    for (auto [vyz, byz] : feniks::zip(*_sel_result, *_sel_buffer))
+                        for (auto [vz, bz] : feniks::zip(vyz, byz))
+                            for (auto [v, b] : feniks::zip(vz, bz))
+                                v += std::pow(std::abs(b * _s), 2);
                 }
             }
 
@@ -962,11 +989,13 @@ private:
 
                 for (auto& x : *_sel_result)
                     for (auto& y : x)
-                        y *= config.dt() / size;
+                        for (auto& z : y)
+                            z *= config.dt() / size;
 
                 W writer(_owner._add_extension(_owner.output / "sel"));
-                for (const auto& it : *_sel_result)
-                    writer.write(it);
+                for (const auto& y : *_sel_result)
+                    for (const auto& z : y)
+                        writer.write(z);
 
                 delete _sel_result;
                 delete _sel_buffer;
@@ -984,14 +1013,14 @@ private:
                 auto omeg = acstc::utils::mesh_1d(0., 1 / config.dt(), _fft->size());
                 std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
 
-                const auto& depth = config.receiver_depth();
-                const auto nr = depth.points().size();
+                const auto& receivers = config.receivers();
+                const auto nr = receivers.size();
 
                 types::vector1d_t<types::real_t> tau(nr);
                 types::vector2d_t<types::real_t> impulse(nr, types::vector1d_t<types::real_t>(_fft->size()));
 
                 for (size_t i = 0; i < _impulse_result->size(); ++i) {
-                    const auto d = (tau[i] = std::hypot(std::get<0>(depth.points(i)), std::get<1>(depth.points(i))) / cm);
+                    const auto d = (tau[i] = std::hypot(receivers[i].x, receivers[i].y) / cm);
 
                     auto zip = feniks::zip((*_impulse_result)[i], omeg);
                     std::transform(zip.begin(), zip.end(), _fft->backward_data(),
@@ -1010,6 +1039,7 @@ private:
 
                 delete _ix;
                 delete _iy;
+                delete _iz;
                 delete _impulse_result;
                 delete _fft;
             }
@@ -1021,15 +1051,16 @@ private:
         jobs_config& _owner;
         types::complex_t _s;
         types::vector1d_t<size_t>* _ix = nullptr;
-        types::vector1d_t<types::real_t>* _iy = nullptr;
-        types::vector2d_t<types::real_t>* _sel_result = nullptr;
+        types::vector3d_t<types::real_t>* _sel_result = nullptr;
         acstc::utils::span<const types::complex_t> _source_spectrum;
+        types::vector1d_t<types::real_t>* _iy = nullptr, *_iz = nullptr;
         acstc::utils::real_fft<types::real_t, types::complex_t>* _fft = nullptr;
-        types::vector2d_t<types::complex_t>* _impulse_result = nullptr, *_sel_buffer = nullptr;
+        types::vector2d_t<types::complex_t>* _impulse_result = nullptr;
+        types::vector3d_t<types::complex_t>* _sel_buffer = nullptr;
 
         void _load_source_spectrum() {
-            if (config.has_source_function() && config.has_source_spectrum())
-                throw std::logic_error("Only one of source function or spectrum can be provided to compute impulse");
+            acstc::utils::dynamic_assert(!(config.has_source_function() && config.has_source_spectrum()),
+                                         "Only one of source function or spectrum can be provided to compute impulse");
 
             if (config.has_source_function()) {
                 _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_function().size()));
@@ -1053,7 +1084,7 @@ private:
                 _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_spectrum().size()));
                 std::memcpy(_fft->backward_data(), config.source_spectrum().data(), _fft->size() * sizeof(types::complex_t));
             } else
-                throw std::logic_error("Either source function or spectrum must be provided");
+                throw std::runtime_error("Either source function or spectrum must be provided");
 
             _source_spectrum.assign(_fft->backward_data(), config.frequencies().size());
 
@@ -1089,15 +1120,15 @@ private:
                 phi_j.erase_last(phi_j.size() - nm);
             }
 
-            if (_owner.jobs.has_job("modes"))
-                write_modes(k_j, phi_j, 
-                    [writer=W(_owner._get_filename("modes"))](const auto& data) mutable {
-                        writer.write(
-                            reinterpret_cast<const types::real_t*>(data.data()), 
-                            data.size() * sizeof(data[0]) / sizeof(types::real_t)
-                        );
-                    }
-                );
+            if (_owner.jobs.has_job("modes")) {
+                write_modes(k_j,
+                    [writer = W(_owner._get_filename("k_j"))](const auto &data) mutable {
+                        writer.write(reinterpret_cast<const types::real_t*>(data.data()),\
+                        data.size() * sizeof(data[0]) / sizeof(types::real_t)
+                    );
+                });
+                write_modes(phi_j, W(_owner._get_filename("phi_j")));
+            }
 
             _owner._meta["k0"].push_back(k0);
             _owner._meta["phi_s"].push_back(phi_s);
@@ -1130,24 +1161,28 @@ private:
             if (_owner.jobs.has_job("impulse"))
                 _perform_solution(init, k0, k_j, phi_j, std::forward<C>(callbacks)...,
                     [
-                        &depth=config.receiver_depth(), 
+                        &receivers=config.receivers(),
                         &result=*_impulse_result, 
                         &ix=*_ix,
                         &iy=*_iy,
+                        &iz=*_iz,
                         &fi=config.index(),
                         &s=_s,
-                        last=types::vector1d_t<types::complex_t>(),
+                        last=types::vector2d_t<types::complex_t>(),
                         last_x=config.x0(),
                         li=0,
                         ir=config.reference_index()
                     ](const auto& mx, const auto& data) mutable {
                         const auto x = mx + config.x0();
-                        for (; !last.empty() && li < ix.size() && std::get<0>(depth.points(ix[li])) <= x; ++li) {
-                            const auto& [px, py] = depth.points(ix[li]);
+                        for (; !last.empty() && li < ix.size() && receivers[ix[li]].x <= x; ++li) {
+                            const auto& [px, py, pz] = receivers[ix[li]];
                             const auto& [ya, yb] = acstc::utils::find_indices(iy, py);
+                            const auto& [za, zb] = acstc::utils::find_indices(iz, pz);
 
-                            auto& r = result[ix[li]][fi] = acstc::utils::__impl::linear_interpolation::field_point(
-                                    last[ya], last[yb], data[ya], data[yb], last_x, x, iy[ya], iy[yb], px, py);
+                            auto& r = result[ix[li]][fi] = acstc::utils::_impl::linear_interpolation::area_point(
+                                    last[ya][za], data[ya][za], last[ya][zb], data[ya][zb],
+                                    last[yb][za], data[yb][za], last[yb][zb], data[yb][zb],
+                                    last_x, x, iy[ya], iy[yb], iz[za], iz[zb], px, py, pz);
 
                             if (ix[li] == ir) {
                                 const auto buff = s;
@@ -1170,7 +1205,8 @@ private:
                 _perform_solve(init, k0, k_j, phi_j, std::forward<C>(callbacks)...,
                     acstc::utils::ekc_callback(_owner.step,
                         [&writer](const auto& x, const auto& data) mutable {
-                            writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * 2);
+                            for (const auto& it : data)
+                                writer.write(reinterpret_cast<const types::real_t*>(it.data()), it.size() * 2);
                         }
                     )
                 );
@@ -1259,10 +1295,11 @@ int main(int argc, const char* argv[]) {
         if (vm.count("help")) {
             po::options_description desc;
             desc.add(generic).add(output).add(computation);
-            std::cout << "Usage: [ [" << acstc::utils::join(available_jobs.begin(), available_jobs.end(), "|") << 
+            std::cout << "Usage: [ [" << acstc::utils::join_it(available_jobs.begin(), available_jobs.end(), "|") <<
                 "], ... ] (=solution) [options]\n" << desc << std::endl;
             return 0;
         }
+        acstc::utils::verbosity::instance().level = 3;
 
         jobs_config.binary = vm.count("binary");
         jobs_config.perform();

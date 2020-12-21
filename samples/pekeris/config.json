@@ -5,6 +5,9 @@
     "ny": 8001,
     "x1": 15000,
     "nx": 15001,
+    "z0": 30,
+    "z1": 30,
+    "nz": 1,
     "mny": 2,
     "z_s": 30,
     "init": "greene",
@@ -25,15 +28,7 @@
         {
             "type": "hydrology",
             "dimensions": [ 2, 2 ],
-            "values": [
-                [1500, 1500],
-                [1500, 1500]
-            ]
-        },
-        {
-            "type": "receivers",
-            "dimensions": [ 1 ],
-            "values": [ [0, 0, 30] ]
+            "values": "test_hydr.txt"
         }
     ]
 }

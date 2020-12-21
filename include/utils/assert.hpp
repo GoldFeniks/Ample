@@ -1,23 +1,28 @@
 #pragma once
-#include <string>
 #include <stdexcept>
+#include "join.hpp"
 
 namespace acstc::utils {
 
-    template<typename E = std::runtime_error>
-    void dynamic_assert(const bool& condition, const char* message) {
-        if (!condition)
-            throw E(message);
+    template<typename E>
+    struct set_exception {
+
+        template<typename... T>
+        static void dynamic_assert(const bool& condition, const T&... args) {
+            if (!condition)
+                throw E(join(args...));
+        }
+
+    };
+
+    template<typename... T>
+    void dynamic_assert(const bool& condition, const T&... args) {
+        set_exception<std::runtime_error>::dynamic_assert(condition, args...);
     }
 
-    template<typename E = std::runtime_error>
-    void dynamic_assert(const bool& condition, const std::string& message) {
-        dynamic_assert(condition, message.c_str());
-    }
-
-    template<typename E = std::runtime_error>
-    void dynamic_assert(const bool& condition) {
-        dynamic_assert<E>(condition, "Dynamic assertion failed");
+    template<>
+    void dynamic_assert<>(const bool& condition) {
+        dynamic_assert(condition, "Dynamic assertion failed");
     }
 
 }// namespace acstc

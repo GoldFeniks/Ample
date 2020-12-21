@@ -1,113 +1,42 @@
 #pragma once
 #include <tuple>
+#include <complex>
 #include <cstddef>
 #include <istream>
 #include <algorithm>
+#include <type_traits>
 #include "normal_modes.h"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
+#include "utils/callback.hpp"
 #include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {
 
+    using namespace std::placeholders;
+
     template<typename T>
     class config;
 
-    template<typename T, typename V>
-    class modes;
-
-    namespace __impl {
-
-        template<typename T>
-        auto read_coords(std::istream& stream, types::vector1d_t<T>& v) {
-            for (size_t i = 0; i < v.size(); ++i)
-                stream >> v[i];
-        }
-
-        template<typename T, typename V>
-        struct modes_reader {
-
-            static auto read(std::istream& stream, types::vector3d_t<V>& res) {
-                for (size_t i = 0; i < res.size(); ++i)
-                    read(stream, res[i]);
-            }
-
-            static auto read(std::istream& stream, types::vector2d_t<V>& res) {
-                T a, b;
-                for (size_t i = 0; i < res.size(); ++i)
-                    for (size_t j = 0; j < res[i].size(); ++j) {
-                        stream >> a >> b;
-                        res[i][j] = V(a, b);
-                    }
-            }
-
-        };
-
-        template<typename T>
-        struct modes_reader<T, T> {
-
-            static auto read(std::istream& stream, types::vector3d_t<T>& res) {
-                for (size_t i = 0; i < res.size(); ++i)
-                    read(stream, res[i]);
-            }
-
-            static auto read(std::istream& stream, types::vector2d_t<T>& res) {
-                for (size_t i = 0; i < res.size(); ++i)
-                    for (size_t j = 0; j < res[i].size(); ++j)
-                        stream >> res[i][j];
-            }
-
-        };
-
-        template<typename T, typename V>
-        auto from_text(std::istream& stream, const size_t count) {
-            size_t n, m, k;
-            stream >> n >> m >> k;
-            types::vector1d_t<T> x(n), y(m);
-            types::vector3d_t<V> k_j(k, types::vector2d_t<V>(n, types::vector1d_t<V>(m)));
-            types::vector3d_t<T> phi_j(k, types::vector2d_t<T>(n, types::vector1d_t<T>(m)));
-            read_coords(stream, x);
-            read_coords(stream, y);
-            modes_reader<T, V>::read(stream, k_j);
-            modes_reader<T, T>::read(stream, phi_j);
-            ::acstc::modes<T, V>::smooth((y.back() - y.front()) / (y.size() - 1), count, k_j, phi_j);
-            return std::make_tuple(
-                    utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
-                    utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
-        }
-
-        template<typename T, typename V>
-        auto const_from_text(std::istream& stream) {
-            size_t n, k;
-            stream >> n >> k;
-            types::vector1d_t<T> y(n);
-            types::vector2d_t<V> k_j(k, types::vector1d_t<V>(n));
-            types::vector2d_t<T> phi_j(k, types::vector1d_t<T>(n));
-            read_coords(stream, y);
-            modes_reader<T, V>::read(stream, k_j);
-            modes_reader<T, T>::read(stream, phi_j);
-            return std::make_tuple(
-                    utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
-                    utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
-        }
+    namespace _impl {
 
         template<typename T, typename V>
         struct modes_copier {
 
-            static void copy(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
+            static void copy(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector4d_t<T>& phi_j,
                     const size_t& i, const size_t& j) {
                 for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
                     k_j[k][i][j] = V(n_m.khs[k], n_m.mattenuation[k]);
-                    phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
+                    phi_j[k][i][j] = std::move(n_m.mfunctions_zr[k]);
                 }
             }
 
-            static void copy(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
+            static void copy(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector3d_t<T>& phi_j,
                              const size_t& i) {
                 for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
                     k_j[k][i] = V(n_m.khs[k], n_m.mattenuation[k]);
-                    phi_j[k][i] = n_m.mfunctions_zr[k][0];
+                    phi_j[k][i] = std::move(n_m.mfunctions_zr[k]);
                 }
             }
 
@@ -116,244 +45,378 @@ namespace acstc {
         template<typename T>
         struct modes_copier<T, T> {
 
-            static void copy(const NormalModes& n_m, types::vector3d_t<T>& k_j, types::vector3d_t<T>& phi_j,
-                             const size_t& i, const size_t& j) {
+            static void copy(const NormalModes& n_m, types::vector3d_t<T>& k_j, types::vector4d_t<T>& phi_j,
+                    const size_t& i, const size_t& j) {
                 for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
                     k_j[k][i][j] = n_m.khs[k];
-                    phi_j[k][i][j] = n_m.mfunctions_zr[k][0];
+                    phi_j[k][i][j] = std::move(n_m.mfunctions_zr[k]);
                 }
             }
 
-            static void copy(const NormalModes& n_m, types::vector2d_t<T>& k_j, types::vector2d_t<T>& phi_j,
+            static void copy(const NormalModes& n_m, types::vector2d_t<T>& k_j, types::vector3d_t<T>& phi_j,
                              const size_t& i) {
                 for (size_t k = 0; k < std::min(n_m.khs.size(), k_j.size()); ++k) {
                     k_j[k][i] = n_m.khs[k];
-                    phi_j[k][i] = n_m.mfunctions_zr[k][0];
+                    phi_j[k][i] = std::move(n_m.mfunctions_zr[k]);
                 }
             }
 
         };
 
-    }// namespace __impl
+    }// namespace _impl
 
     template<typename T = types::real_t, typename V = T>
     class modes {
 
+    private:
+
+        static constexpr auto Complex = !std::is_same_v<T, V>;
+
     public:
 
-        modes() = delete;
+        explicit modes(const config<T>& config) : _config(config) {
+            _n_m.iModesSubset = _config.mode_subset();
+            _n_m.ppm = static_cast<unsigned int>(_config.ppm());
+            _n_m.ordRich = static_cast<unsigned int>(_config.ord_rich());
+            _n_m.f = _config.f();
+            _n_m.M_betas = _config.betas();
+            _n_m.eigen_type = "alglib";
 
-        static auto create(const config<T>& config, const size_t& c = 0, const bool show_progress = false) {
-            return _create(config, config.bathymetry().x(), config.bathymetry().y(), config.bathymetry().data(), c, show_progress);
+            _n_m.M_depths.resize(_config.n_layers() + _config.bottom_layers().size());
+            if (!config.additive_depth())
+                std::copy(_config.bottom_layers().begin(), _config.bottom_layers().end(), _n_m.M_depths.begin() + _config.n_layers());
+
+            _n_m.M_c1s.resize(_config.n_layers());
+            _n_m.M_c1s.insert(_n_m.M_c1s.end(), _config.bottom_c1s().begin(), _config.bottom_c1s().end());
+
+            _n_m.M_c2s.resize(_config.n_layers());
+            _n_m.M_c2s.insert(_n_m.M_c2s.end(), _config.bottom_c2s().begin(), _config.bottom_c2s().end());
+
+            _n_m.M_rhos.resize(config.n_layers(), T(1));
+            _n_m.M_rhos.insert(_n_m.M_rhos.end(), _config.bottom_rhos().begin(), _config.bottom_rhos().end());
+
+            _n_m.M_Ns_points.resize(_n_m.M_depths.size());
         }
 
-        static auto create(const config<T>& config,
-                const T& x0, const T& x1, const size_t& nx,
-                const T& y0, const T& y1, const size_t& ny,
-                const size_t& c = 0,
-                const bool show_progress = false) {
-            return _create(config, utils::mesh_1d(x0, x1, nx), utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().field(x0, x1, nx, y0, y1, ny), c, show_progress);
+        modes(const config<T>& config, const types::vector1d_t<T>& z) : modes(config) {
+            _check_z(z);
+            _n_m.zr.assign(z.begin(), z.end());
         }
 
-        static auto create(const config<T>& config, const size_t& nx, const size_t& ny, 
-            const size_t& c = 0, const bool show_progress = false) {
-            const auto [x0, x1, y0, y1] = config.bounds();
-            return create(config, x0, x1, nx, y0, y1, ny, c, show_progress);
-        }
+        auto point(const T& x, const T& y, const size_t& c = -1) {
+            _point(x, y, c);
 
-        static auto create(const config<T>& config, const T& y0, const T& y1, const size_t& ny, 
-            const size_t& c = 0, const bool show_progress = false) {
-            return _create(config, utils::mesh_1d(y0, y1, ny),
-                    config.bathymetry().line(config.bathymetry().x().front(), y0, y1, ny), c, show_progress);
-        }
-
-        static auto create(const config<T>& config, const size_t& ny, const size_t& c = 0, const bool show_progress = false) {
-            const auto [y0, y1] = config.y_bounds();
-            return create(config, y0, y1, ny, c, show_progress);
-        }
-
-        static auto from_text(std::istream& stream, const size_t count) {
-            return __impl::from_text<T, V>(stream, count);
-        }
-
-        static auto from_text(std::istream&& stream, const size_t count) {
-            return from_text(stream, count);
-        }
-
-        template<typename S = uint32_t>
-        static auto from_binary(std::istream& stream, const size_t count) {
-            S n, m, k;
-            stream.read(reinterpret_cast<char*>(&n), sizeof(S));
-            stream.read(reinterpret_cast<char*>(&m), sizeof(S));
-            stream.read(reinterpret_cast<char*>(&k), sizeof(S));
-            types::vector1d_t<T> x(n), y(m);
-            stream.read(reinterpret_cast<char*>(x.data()), sizeof(T) * n);
-            stream.read(reinterpret_cast<char*>(y.data()), sizeof(T) * m);
-            types::vector3d_t<V> k_j(k, types::vector2d_t<V>(n, types::vector1d_t<V>(m)));
-            types::vector3d_t<T> phi_j(k, types::vector2d_t<T>(n, types::vector1d_t<T>(m)));
-            for (size_t j = 0; j < k; ++j)
-                for (size_t i = 0; i < n; ++i)
-                    stream.read(reinterpret_cast<char*>(k_j[j][i].data()), sizeof(V) * m);
-            for (size_t j = 0; j < k; ++j)
-                for (size_t i = 0; i < n; ++i)
-                    stream.read(reinterpret_cast<char*>(phi_j[j][i].data()), sizeof(T) * m);
-            smooth((y.back() - y.front()) / (y.size() - 1), count, k_j, phi_j);
-            return std::make_tuple(
-                    utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
-                    utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
-        }
-
-        template<typename S = uint32_t>
-        static auto from_binary(std::istream&& stream, const size_t count) {
-            return from_binary<S>(stream, count);
-        }
-
-        static auto const_from_text(std::istream& stream) {
-            return __impl::const_from_text<T, V>(stream);
-        }
-
-        static auto const_from_text(std::istream&& stream) {
-            return const_from_text(stream);
-        }
-
-        template<typename S = uint32_t>
-        static auto const_from_binary(std::istream& stream) {
-            S n, k;
-            stream.read(reinterpret_cast<char*>(&n), sizeof(S));
-            stream.read(reinterpret_cast<char*>(&k), sizeof(S));
-            types::vector1d_t<T> y(n);
-            types::vector2d_t<V> k_j(k, types::vector1d_t<V>(n));
-            types::vector2d_t<T> phi_j(k, types::vector1d_t<T>(n));
-            for (size_t j = 0; j < k; ++j)
-                stream.read(reinterpret_cast<char*>(k_j[j].data()), sizeof(V) * n);
-            for (size_t j = 0; j < k; ++j)
-                stream.read(reinterpret_cast<char*>(phi_j[j].data()), sizeof(V) * n);
-            return std::make_tuple(
-                    utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
-                    utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
-        }
-
-        template<typename S = uint32_t>
-        static auto const_from_binary(std::istream&& stream) {
-            return const_from_binary(stream);
-        }
-
-        static auto calc_modes(const config<T>& config, const T& x, const T& depth, const T& z, const size_t& c = 0) {
-            NormalModes n_m;
-
-            if (depth < z)
-                return n_m;
-
-            n_m.iModesSubset = config.mode_subset();
-            n_m.ppm = static_cast<unsigned int>(config.ppm());
-            n_m.ordRich = static_cast<unsigned int>(config.ord_rich());
-            n_m.zr.push_back(z);
-            n_m.f = config.f();
-            n_m.M_betas = config.betas();
-
-            n_m.eigen_type = "alglib";
-            n_m.nmod = static_cast<int>(c);
-            n_m.alpha = M_PI / 180 * (c > 0);
-            auto buff = utils::mesh_1d(T(0), depth, config.n_layers() + 1);
-            n_m.M_depths.assign(buff.begin() + 1, buff.end());
-            if (config.additive_depth()) {
-                n_m.M_depths.reserve(n_m.M_depths.size() + config.bottom_layers().size());
-                for (const auto& it : config.bottom_layers())
-                    n_m.M_depths.push_back(it + depth);
+            if constexpr (Complex) {
+                types::vector1d_t<V> k_j(_n_m.khs.size());
+                for (size_t j = 0; j < k_j.size(); ++j)
+                    k_j[j] = V(_n_m.khs[j], _n_m.mattenuation[j]);
+                return std::make_tuple(std::move(k_j), std::move(_n_m.mfunctions_zr));
             } else
-                n_m.M_depths.insert(n_m.M_depths.end(), config.bottom_layers().begin(), config.bottom_layers().end());
-
-            config.hydrology().line(x, T(0), depth, buff);
-            n_m.M_c1s.assign(buff.begin(), buff.end() - 1);
-            n_m.M_c1s.insert(n_m.M_c1s.end(), config.bottom_c1s().begin(), config.bottom_c1s().end());
-            n_m.M_c2s.assign(buff.begin() + 1, buff.end());
-            n_m.M_c2s.insert(n_m.M_c2s.end(), config.bottom_c2s().begin(), config.bottom_c2s().end());
-
-            n_m.M_rhos.resize(config.n_layers(), T(1));
-            n_m.M_rhos.insert(n_m.M_rhos.end(), config.bottom_rhos().begin(), config.bottom_rhos().end());
-
-            n_m.M_Ns_points.resize(n_m.M_depths.size());
-            n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(n_m.ppm * n_m.M_depths[0]));
-            for (size_t i = 1; i < n_m.M_depths.size(); ++i)
-                n_m.M_Ns_points[i] = static_cast<unsigned>(std::round(n_m.ppm * (n_m.M_depths[i] - n_m.M_depths[i - 1])));
-
-            n_m.compute_khs();
-            n_m.compute_mfunctions_zr();
-            if (config.complex_modes())
-                n_m.compute_mattenuation();
-            return n_m;
+                return std::make_tuple(std::move(_n_m.khs), std::move(_n_m.mfunctions_zr));            
         }
 
-        static void smooth(const T& h, const size_t count, types::vector3d_t<V>& k, types::vector3d_t<T>& phi) {
-            types::vector1d_t<T> coefficients(count);
-            const auto d = (count - 1) * h;
-            for (size_t i = 0; i < count; ++i)
-                coefficients[i] = i * h / d;
-            for (size_t j = 0; j < k.size(); ++j) {
-                const auto& k0 = k[j][0];
-                const auto& phi0 = phi[j][0];
-                for (size_t i = 1; i < k.size(); ++i)
-                    for (size_t l = 0, r = k0.size() - count; l < count; ++l, ++r) {
-                        k[j][i][l] = k0[l] * (T(1) - coefficients[l]) + coefficients[l] * k[j][i][l];
-                        k[j][i][r] = k[j][i][r] * (T(1) - coefficients[l]) + coefficients[l] * k0[r];
-                        phi[j][i][l] = phi0[l] * (T(1) - coefficients[l]) + coefficients[l] * phi[j][i][l];
-                        phi[j][i][r] = phi[j][i][r] * (T(1) - coefficients[l]) + coefficients[l] * phi0[r];
-                    }
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        void line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto hy = (y1 - y0) / (ny - 1);
+            const auto depth = _config.bathymetry().line(x, y0, y1, ny);
+
+            auto y = y0;
+            for (size_t i = 0; i < ny; ++i, y += hy) {
+                _point(x, y, depth[i], c);
+                callback(std::as_const(_n_m), std::as_const(i));
             }
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        void line(const T& x, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto [y0, y1] = _config.y_bounds();
+            return line(x, y0, y1, ny, callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        void line(const T& x, C&& callback, const size_t& c = -1) {
+            return line(x, _config.mny(), callback, c);
+        }
+
+        auto vector_line(const T& x, const T& y0, const T& y1, const size_t& ny, const size_t& c = -1) {
+            return vector_line(x, y0, y1, ny, utils::nothing_callback(), c);
+        }
+
+        auto vector_line(const T& x, const size_t& ny, const size_t& c = -1) {
+            const auto [y0, y1] = _config.y_bounds();
+            return line(x, y0, y1, ny, c);
+        }
+
+        auto vector_line(const T& x, const size_t& c = -1) {
+            return line(x, _config.mny(), c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        auto vector_line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& c = -1) {
+            size_t m = 0;
+            types::vector2d_t<V> k_j;
+            types::vector3d_t<T> phi_j;
+
+            line(x, y0, y1, ny, 
+                utils::callbacks(
+                    callback,
+                    [&, mm=_config.max_mode()](const NormalModes& n_m, const size_t& i) mutable {
+                        _fill_data(n_m, k_j, phi_j, ny, i, mm, m);
+                    }
+                ), c
+            );
+
+            return std::make_tuple(std::move(k_j), std::move(phi_j));
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        auto vector_line(const T& x, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto [y0, y1] = _config.y_bounds();
+            return vector_line(x, y0, y1, ny, callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        auto vector_line(const T& x, C&& callback, const size_t& c = -1) {
+            return vector_line(x, callback, c);
+        }
+
+        auto interpolated_line(const T& x, const T& y0, const T& y1, const size_t& ny, const size_t& c = -1) {
+            return interpolated_line(x, y0, y1, ny, utils::nothing_callback(), c);
+        }
+
+        auto interpolated_line(const T& x, const size_t& ny, const size_t& c = -1) {
+            const auto [y0, y1] = _config.y_bounds();
+            return interpolated_line(x, y0, y1, ny, c);
+        }
+
+        auto interpolated_line(const T& x, const size_t& c = -1) {
+            return interpolated_line(x, _config.mny(), c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        auto interpolated_line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto y = utils::mesh_1d(y0, y1, ny);
+            auto [k_j, phi_j] = vector_line(x, y0, y1, ny, callback, c);
+
+            return std::make_tuple(
+                utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
+                utils::linear_interpolated_data_2d<T, T>(y, _n_m.zr, std::move(phi_j))
+            );
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        auto interpolated_line(const T& x, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto [y0, y1] = _config.y_bounds();
+            return interpolated_line(x, y0, y1, ny, callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
+        auto interpolated_line(const T& x, C&& callback, const size_t& c = -1) {
+            return interpolated_line(x, _config.mny(), callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        void field(
+            const T& x0, const T& x1, const size_t& nx,
+            const T& y0, const T& y1, const size_t& ny,
+            C&& callback, const size_t& c = -1) {
+            const auto hx = (x1 - x0) / (nx - 1);
+            const auto hy = (y1 - y0) / (ny - 1);
+            const auto depth = _config.bathymetry().field(x0, x1, nx, y0, y1, ny);
+
+            auto x = x0;
+            for (size_t i = 0; i < nx; ++i, x += hx) {
+                auto y = y0;
+                for (size_t j = 0; j < ny; ++j, y += hy) {
+                    _point(x, y, depth[i][j], c);
+                    callback(std::as_const(_n_m), std::as_const(i), std::as_const(j));
+                }
+            }
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        void field(const size_t& nx, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto [x0, x1] = _config.x_bounds();
+            const auto [y0, y1] = _config.y_bounds();
+            return field(x0, x1, nx, y0, y1, ny, callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        void field(C&& callback, const size_t& c = -1) {
+            return field(_config.mnx(), _config.mny(), callback, c);
+        }
+
+        auto vector_field(
+            const T& x0, const T& x1, const size_t& nx,
+            const T& y0, const T& y1, const size_t& ny,
+            const size_t& c = -1) {
+            return vector_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), c);
+        }
+
+        auto vector_field(const size_t& nx, const size_t& ny, const size_t& c = -1) {
+            const auto [x0, x1] = _config.x_bounds();
+            const auto [y0, y1] = _config.y_bounds();
+            return vector_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), c);
+        }
+
+        auto vector_field(const size_t& c = -1) {
+            return vector_field(_config.mnx(), _config.mny(), utils::nothing_callback(), c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        auto vector_field(
+            const T& x0, const T& x1, const size_t& nx,
+            const T& y0, const T& y1, const size_t& ny,
+            C&& callback, const size_t& c = -1) {
+            types::vector3d_t<V> k_j;
+            types::vector4d_t<T> phi_j;
+
+            field(x0, x1, nx, y0, y1, ny,
+                utils::callbacks(
+                    callback,
+                    [&, m=size_t(0), mm=_config.max_mode()](const NormalModes& n_m, const size_t& i, const size_t& j) mutable {
+                        m = j ? m : 0;
+                        _fill_data(n_m, k_j, phi_j, nx, ny, i, j, mm, m);
+                    }
+                ), c
+            );
+
+            _smooth((y1 - y0) / (ny - 1), _config.border_width(), k_j, phi_j);
+
+            return std::make_tuple(std::move(k_j), std::move(phi_j));
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        auto vector_field(const size_t& nx, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto [x0, x1] = _config.x_bounds();
+            const auto [y0, y1] = _config.y_bounds();
+            return vector_field(x0, x1, nx, y0, y1, ny, callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        auto vector_field(C&& callback, const size_t& c = -1) {
+            return vector_field(_config.mnx(), _config.mny(), callback, c);
+        }
+
+        auto interpolated_field(
+            const T& x0, const T& x1, const size_t& nx,
+            const T& y0, const T& y1, const size_t& ny,
+            const size_t& c = -1) {
+            return interpolated_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), c);
+        }
+
+        auto interpolated_field(const size_t& nx, const size_t& ny, const size_t& c = -1) {
+            const auto [x0, x1] = _config.x_bounds();
+            const auto [y0, y1] = _config.y_bounds();
+            return interpolated_field(x0, x1, nx, y0, y1, ny, c);
+        }
+
+        auto interpolated_field(const size_t& c = -1) {
+            return interpolated_field(_config.mnx(), _config.mny(), c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        auto interpolated_field(
+            const T& x0, const T& x1, const size_t& nx,
+            const T& y0, const T& y1, const size_t& ny,
+            C&& callback, const size_t& c = -1) {
+            const auto x = utils::mesh_1d(x0, x1, nx);
+            const auto y = utils::mesh_1d(y0, y1, ny);
+            auto [k_j, phi_j] = vector_field(x0, x1, nx, y0, y1, ny, callback, c);
+
+            return std::make_tuple(
+                utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
+                utils::linear_interpolated_data_3d<T, T>(x, y, _n_m.zr, std::move(phi_j))
+            );
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        auto interpolated_field(const size_t& nx, const size_t& ny, C&& callback, const size_t& c = -1) {
+            const auto [x0, x1] = _config.x_bounds();
+            const auto [y0, y1] = _config.y_bounds();
+            return interpolated_field(x0, x1, nx, y0, y1, ny, callback, c);
+        }
+
+        template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
+        auto interpolated_field(C&& callback, const size_t& c = -1) {
+            return interpolated_field(_config.mnx(), _config.mny(), callback, c);
+        }
+
+        void set_z(const types::vector1d_t<T>& z) {
+            _check_z(z);
+            _n_m.zr.assign(z.begin(), z.end());
         }
 
     private:
 
-        template<typename XV, typename YV, typename DV>
-        static auto _create(const config<T>& config, const XV& x, const YV& y, const DV& data, const size_t& c, const bool show_progress) {
-            types::vector3d_t<V> k_j;
-            types::vector3d_t<T> phi_j;
-            const auto mm = config.max_mode();
-            const auto nx = x.size();
-            const auto ny = y.size();
-            const auto& depth = config.receiver_depth();
-            utils::progress_bar pbar(nx * ny, "Modes", show_progress);
+        NormalModes _n_m;
+        const config<T>& _config;
 
-            for (size_t i = 0; i < nx; ++i) {
-                size_t m = 0;
-                for (size_t j = 0; j < ny; ++j) {
-                    _fill_data(calc_modes(config, x[i], data[i][j], depth.point(x[i], y[j]), c), k_j, phi_j, nx, ny, i, j, mm, m);
-                    if (show_progress)
-                        pbar();
-                }
-            }
-            smooth((y.back() - y.front()) / (y.size() - 1), config.border_width(), k_j, phi_j);
-            return std::make_tuple(
-                    utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
-                    utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_j)));
+        static void _check_z(const types::vector1d_t<T>& z) {
+            utils::dynamic_assert(std::all_of(z.begin(), z.end(), [](const auto& v) { return v >= T(0); }),
+                  "All z coordinates must be positive");
         }
 
-        template<typename YV, typename DV>
-        static auto _create(const config<T>& config, const YV& y, const DV& data, const size_t& c, const bool show_progress) {
-            types::vector2d_t<V> k_j;
-            types::vector2d_t<T> phi_j;
-            const auto mm = config.max_mode();
-            const auto ny = y.size();
-            const auto& depth = config.receiver_depth();
+        static void _smooth(const T& h, const size_t& count, types::vector3d_t<V>& k_j, types::vector4d_t<T>& phi_j) {
+            types::vector1d_t<T> coefficients(count);
+            const auto d = (count - 1) * h;
+            for (size_t i = 0; i < count; ++i)
+                coefficients[i] = i * h / d;
 
-            size_t m = 0;
-            for (const auto& i : utils::progress_bar(ny, "Modes", show_progress)) {
-                _fill_data(calc_modes(config, config.x0(), data[i], depth.point(config.x0(), y[i]), c), k_j, phi_j, ny, i, mm, m);                
+            for (size_t j = 0; j < k_j.size(); ++j) {
+                const auto& k0 = k_j[j][0];
+                const auto& phi0 = phi_j[j][0];
+                for (size_t i = 1; i < k_j[j].size(); ++i)
+                    for (size_t l = 0, r = k0.size() - count; l < count; ++l, ++r) {
+                        k_j[j][i][l] = k0[l] * (T(1) - coefficients[l]) + coefficients[l] * k_j[j][i][l];
+                        k_j[j][i][r] = k_j[j][i][r] * (T(1) - coefficients[l]) + coefficients[l] * k0[r];
+                        for (size_t k = 0; k < phi0[l].size(); ++k) {
+                            phi_j[j][i][l][k] = phi0[l][k] * (T(1) - coefficients[l]) + coefficients[l] * phi_j[j][i][l][k];
+                            phi_j[j][i][r][k] = phi_j[j][i][r][k] * (T(1) - coefficients[l]) + coefficients[l] * phi0[r][k];
+                        }
+                    }
             }
-            return std::make_tuple(
-                    utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
-                    utils::linear_interpolated_data_1d<T, T>(y, std::move(phi_j)));
         }
 
-        static auto _fill_data(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector3d_t<T>& phi_j,
+        void _point(const T& x, const T& y, const T& depth, const size_t& c = -1) {
+            utils::dynamic_assert(_n_m.zr.size() > 0, "There must be at least one depth value");
+
+            _n_m.nmod = static_cast<int>(c == -1 ? _config.n_modes() : c);
+            _n_m.alpha = M_PI / 180 * (_n_m.nmod > 0);
+
+            auto buff = utils::mesh_1d(T(0), depth, _config.n_layers() + 1);
+            std::copy(buff.begin() + 1, buff.end(), _n_m.M_depths.begin());
+
+            if (_config.additive_depth())
+                std::transform(_config.bottom_layers().begin(), _config.bottom_layers().end(), 
+                    _n_m.M_depths.begin() + _config.n_layers(), [&depth](const auto& z) { return z + depth; });
+
+            _config.hydrology().line(x, T(0), depth, buff);
+            std::copy(buff.begin(), buff.end() - 1, _n_m.M_c1s.begin());
+            std::copy(buff.begin() + 1, buff.end(), _n_m.M_c2s.begin());
+
+            _n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(_n_m.ppm * _n_m.M_depths[0]));
+            for (size_t i = 1; i < _n_m.M_depths.size(); ++i)
+                _n_m.M_Ns_points[i] = static_cast<unsigned>(std::round(_n_m.ppm * (_n_m.M_depths[i] - _n_m.M_depths[i - 1])));
+
+            _n_m.compute_khs();
+            _n_m.compute_mfunctions_zr();
+            if constexpr (Complex)
+                _n_m.compute_mattenuation();
+        }
+
+        void _point(const T& x, const T& y, const size_t& c = -1) {
+            _point(x, y, _config.bathymetry().point(x, y), c);
+        }
+
+        static auto _fill_data(const NormalModes& n_m, types::vector3d_t<V>& k_j, types::vector4d_t<T>& phi_j,
                 const size_t& nx, const size_t& ny, const size_t& i, const size_t& j, const size_t& mm, size_t& m) {
             const auto n = std::min(n_m.khs.size(), mm);
             if (n > k_j.size()) {
                 k_j.resize(n, types::vector2d_t<V>(nx, types::vector1d_t<V>(ny, V(0))));
-                phi_j.resize(n, types::vector2d_t<T>(nx, types::vector1d_t<T>(ny, T(0))));
+                phi_j.resize(n, types::vector3d_t<T>(nx, types::vector2d_t<T>(ny, types::vector1d_t<T>(n_m.zr.size(), T(0)))));
             }
-            __impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i, j);
+            _impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i, j);
             for (size_t k = m; k < n; ++k)
                 for (size_t l = 0; l < j; ++l)
                     k_j[k][i][l] = k_j[k][i][j];
@@ -362,14 +425,14 @@ namespace acstc {
             m = std::max(n, m);
         }
 
-        static auto _fill_data(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector2d_t<T>& phi_j,
+        static auto _fill_data(const NormalModes& n_m, types::vector2d_t<V>& k_j, types::vector3d_t<T>& phi_j,
                                const size_t& ny, const size_t& i, const size_t& mm, size_t& m) {
             const auto n = std::min(n_m.khs.size(), mm);
             if (n > k_j.size()) {
                 k_j.resize(n, types::vector1d_t<V>(ny, V(0)));
-                phi_j.resize(n, types::vector1d_t<T>(ny, T(0)));
+                phi_j.resize(n, types::vector2d_t<T>(ny, types::vector1d_t<T>(n_m.zr.size(), T(0))));
             }
-            __impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i);
+            _impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i);
             for (size_t k = m; k < n; ++k)
                 for (size_t l = 0; l < i; ++l)
                     k_j[k][l] = k_j[k][i];

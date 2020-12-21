@@ -13,128 +13,23 @@
 #include "series.hpp"
 #include "hydrology.hpp"
 #include "bathymetry.hpp"
+#include "feniks/zip.hpp"
+#include "utils/join.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "nlohmann/json.hpp"
 #include "utils/convertors.hpp"
 #include "utils/dimensions.hpp"
 #include "initial_conditions.hpp"
+#include "utils/multi_optional.hpp"
 
 namespace acstc {
 
     using nlohmann::json;
 
-    namespace __impl {
+    namespace _impl {
 
-        template<typename T, typename V>
-        struct modes_creator {
-
-            static auto create(const json& data, const size_t count, const std::filesystem::path& path) {
-                const auto type = data[0].template get<std::string>();
-                if (type == "values") {
-                    const auto x = data["/1/x"_json_pointer].template get<types::vector1d_t<T>>();
-                    const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
-                    const auto& k_values = data["/1/k"_json_pointer];
-                    types::vector3d_t<V> k_data(k_values.size(), types::vector2d_t<V>(x.size(), types::vector1d_t<V>(y.size())));
-                    for (size_t i = 0; i < k_data.size(); ++i)
-                        for (size_t j = 0; j < x.size(); ++j)
-                            for (size_t k = 0; k < y.size(); ++k)
-                                k_data[i][j][k] = V(k_values[i][j][2 * k], k_values[i][j][2 * k + 1]);
-                    auto phi_data = data["/1/phi"_json_pointer].template get<types::vector3d_t<T>>();
-                    ::acstc::modes<T, V>::smooth((y.back() - y.front()) / (y.size() - 1), count, k_data, phi_data);
-                    return std::make_tuple(
-                            utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_data)),
-                            utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_data)));
-                }
-                if (type == "text_file")
-                    return ::acstc::modes<T, V>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())), count);
-                if (type == "binary_file")
-                    return ::acstc::modes<T, V>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary), count);
-                throw std::logic_error("Unknown modes type: " + type);
-            }
-
-            static auto create_const(const json& data, const std::filesystem::path& path) {
-                const auto type = data[0].template get<std::string>();
-                if (type == "values") {
-                    const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
-                    const auto& k_values = data["/1/k"_json_pointer];
-                    types::vector2d_t<V> k_data(k_values.size(), types::vector1d_t<V>(y.size()));
-                    for (size_t i = 0; i < k_data.size(); ++i)
-                        for (size_t j = 0; j < y.size(); ++j)
-                            k_data[i][j] = V(k_values[i][2 * j], k_values[i][2 * j + 1]);
-                    return std::make_tuple(
-                            utils::linear_interpolated_data_1d<T, V>(y, std::move(k_data)),
-                            utils::linear_interpolated_data_1d<T, T>(y,
-                                    data["/1/phi"_json_pointer].template get<types::vector2d_t<T>>()));
-                }
-                if (type == "text_file")
-                    return ::acstc::modes<T, V>::const_from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
-                if (type == "binary_file")
-                    return ::acstc::modes<T, V>::const_from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
-                throw std::logic_error("Unknown modes type: " + type);
-            }
-
-        };
-
-        template<typename T>
-        struct modes_creator<T, T> {
-
-            static auto create(const json& data, const size_t count, const std::filesystem::path& path) {
-                const auto type = data[0].template get<std::string>();
-                if (type == "values") {
-                    const auto x = data["/1/x"_json_pointer].template get<types::vector1d_t<T>>();
-                    const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
-                    auto k_data = data["/1/k"_json_pointer].template get<types::vector3d_t<T>>();
-                    auto phi_data = data["/1/phi"_json_pointer].template get<types::vector3d_t<T>>();
-                    ::acstc::modes<T, T>::smooth((y.back() - y.front()) / (y.size() - 1), count, k_data, phi_data);
-                    return std::make_tuple(
-                            utils::linear_interpolated_data_2d<T, T>(x, y, std::move(k_data)),
-                            utils::linear_interpolated_data_2d<T, T>(x, y, std::move(phi_data)));
-                }
-                if (type == "text_file")
-                    return ::acstc::modes<T, T>::from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())), count);
-                if (type == "binary_file")
-                    return ::acstc::modes<T, T>::from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary), count);
-                throw std::logic_error("Unknown modes type: " + type);
-            }
-
-            static auto create_const(const json& data, const std::filesystem::path& path) {
-                const auto type = data[0].template get<std::string>();
-                if (type == "values") {
-                    const auto y = data["/1/y"_json_pointer].template get<types::vector1d_t<T>>();
-                    return std::make_tuple(
-                            utils::linear_interpolated_data_1d<T, T>(y,
-                                    data["/1/k"_json_pointer].template get<types::vector2d_t<T>>()),
-                            utils::linear_interpolated_data_1d<T, T>(y,
-                                    data["/1/phi"_json_pointer].template get<types::vector2d_t<T>>()));
-                }
-                if (type == "text_file")
-                    return ::acstc::modes<T, T>::const_from_text(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>())));
-                if (type == "binary_file")
-                    return ::acstc::modes<T, T>::const_from_binary(std::ifstream(utils::make_file_path(path, data[1].template get<std::string>()), std::ios::binary));
-                throw std::logic_error("Unknown modes type: " + type);
-            }
-
-        };
-
-        template<typename T>
-        auto create_receiver_depth(const types::vector1d_t<std::array<T, 3>>& receivers) {
-            types::vector1d_t<T> values;
-            types::vector1d_t<std::tuple<T, T>> points;
-            for (const auto& [x, y, z] : receivers) {
-                values.emplace_back(z);
-                points.emplace_back(x, y);
-            }
-            return utils::nearest_neighbour_interpolated_data_2d<T>(std::move(points), std::move(values));
-        }
-
-        template<typename T>
-        auto create_range(const json& data) {
-            return acstc::utils::mesh_1d(
-                data["a"].template get<T>(), 
-                data["b"].template get<T>(),
-                data["n"].template get<size_t>());
-        }
+        HAS_CONCEPT(can_make_mesh, utils::mesh_1d(std::declval<C>(), std::declval<C>(), size_t(0)), typename = void)
 
         template<typename T, typename... D>
         struct input_data {
@@ -153,54 +48,83 @@ namespace acstc {
                 if (data.is_string())
                     return read_data<M>(dims, path, data.template get<std::string>(), binary);
 
-                check_size<M>(data.size(), dims.template size<M>());
+                if constexpr (M + 1 < sizeof...(D)) {
+                    check_array_size<M>(data, dims.template size<M>());
 
-                if constexpr (M + 1 < sizeof...(D))
                     if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
                         return utils::make_vector_i(data,
-                            [&dims, &path, &binary](const auto& data, const size_t& i) {
+                            [&dims, &path, &binary](const auto &data, const size_t &i) {
                                 check_size<M>(data.size(), dims.template size<M>(i));
                                 return make_vector<M>(data, dims, path, binary);
                             }
                         );
-                    else 
+                    else
                         return make_vector<M>(data, dims, path, binary);
-                else
-                    if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
+                }
+                else {
+                    if constexpr (utils::dimensions<D...>::template is_variable_dim<M>) {
+                        check_array_size<M>(data, dims.template size<M>());
+
                         return utils::make_vector_i(data,
                             [&dims, &path, &binary](const auto& data, const size_t& i) {
                                 if (data.is_string()) {
-                                    types::vector1d_t<T> result(dims.template size<M>(i));
                                     if (binary) {
+                                        types::vector1d_t<T> result(dims.template size<M>(i));
                                         std::ifstream inp(utils::make_file_path(path, data.template get<std::string>()), std::ios::binary);
+
                                         inp.read(reinterpret_cast<char*>(result.data()), sizeof(T) * result.size());
-                                    } else {
-                                        std::ifstream inp(utils::make_file_path(path, data.template get<std::string>()));
-                                        for (auto& it : result)
-                                            inp >> it;
+                                        utils::dynamic_assert(inp.gcount() == sizeof(T) * dims.template size<M>(i), "Insufficient data in file");
+                                        return result;
                                     }
+
+                                    types::vector1d_t<T> result;
+                                    std::ifstream inp(utils::make_file_path(path, data.template get<std::string>()));
+
+                                    _impl::read_line(inp, result);
+                                    utils::dynamic_assert(result.size() == dims.template size<M>(i),
+                                                          "Incorrect number of elements on line 1. Expected ",
+                                                          dims.template size<M>(i), ", but got ", result.size());
                                     return result;
                                 }
 
-                                check_size<M>(data.size(), dims.template size<M>(i));
+                                if constexpr (can_make_mesh_v<T>)
+                                    if (data.is_object()) {
+                                        utils::dynamic_assert(data.contains("a") && data.contains("b") && data.size() == 2 &&
+                                                              data["a"].is_number() && data["b"].is_number(),
+                                                              "Expected ranged data specification as { \"a\": <number>, \"b\": <number> }, but got ", data, " at level ", M);
+
+                                        return utils::mesh_1d(data["a"].template get<T>(), data["b"].template get<T>(), dims.template size<M>(i));
+                                    }
+
+                                check_array_size<M>(data, dims.template size<M>(i));
                                 return data.template get<types::vector1d_t<T>>();
                             }
                         );
-                    else 
+                    } else {
+                        if constexpr (can_make_mesh_v<T>)
+                            if (data.is_object()) {
+                                utils::dynamic_assert(data.contains("a") && data.contains("b") && data.size() == 2,
+                                                      data["a"].is_number() && data["b"].is_number(),
+                                                      "Expected ranged data specification as { \"a\": <number>, \"b\": <number> }, but got ", data, " at level ", M);
+
+                                return utils::mesh_1d(data["a"].template get<T>(), data["b"].template get<T>(), dims.template size<M>());
+                            }
+
+                        check_array_size<M>(data, dims.template size<M>());
                         return data.template get<types::vector1d_t<T>>();
+                    }
+                }
             }
 
             template<size_t M>
             static auto check_size(const size_t& n, const size_t& m) {
-                if (n != m)
-                    throw std::runtime_error(
-                        std::string("Wrong dimension size at level ") +
-                        std::to_string(M) + 
-                        ". Expected " +
-                        std::to_string(m) + 
-                        ". Got " +
-                        std::to_string(n)
-                    );
+                utils::dynamic_assert(n == m, "Wrong dimension size at level ", M, ". Expected ", m, ". Got ", n);
+            }
+
+            template<size_t M>
+            static auto check_array_size(const json& data, const size_t& m) {
+                utils::dynamic_assert(data.is_array(), "Expected array at level ", M);
+                check_size<M>(data.size(), m);
             }
 
             template<size_t M>
@@ -223,16 +147,22 @@ namespace acstc {
 
         };
 
-    }// namespace __impl;
+    }// namespace _impl;
 
 #define CONFIG_DATA_FIELD(field, type)                                      \
     private:                                                                \
         mutable std::optional<type> _data_##field;                          \
     public:                                                                 \
         const type& field () const {                                        \
-            if (!_data_##field.has_value())                                 \
+            if (!_data_##field.has_value()) {                               \
+            	utils::dynamic_assert(_data.contains(#field),               \
+                    "Missing field " #field);                               \
                 _data_##field = type(_data[#field].template get<type>());   \
+            }                                                               \
             return _data_##field.value();                                   \
+        }                                                                   \
+        bool has_##field() const {                                          \
+            return _data_##field.has_value();                               \
         }                                                                   \
         void field(const type& value) {                                     \
             _data_##field = value;                                          \
@@ -249,13 +179,13 @@ namespace acstc {
         void field (const type& value) { _##field = value; }                \
         void field (type&& value) { _##field = std::move(value); }
 
-#define CONFIG_INPUT_DATA(field, type, op)                           \
+#define CONFIG_INPUT_DATA(field, op, type...)                               \
     private:                                                                \
         std::optional<type> _##field;                                       \
     public:                                                                 \
         const auto& field () const {                                        \
-            if (!_##field.has_value())                                      \
-                throw std::logic_error("Field " #field " has no value");    \
+            utils::dynamic_assert(_##field.has_value(),                     \
+                "Field " #field " has no value");                           \
             return _##field.value() op;                                     \
         }                                                                   \
         bool has_##field () const {                                         \
@@ -266,6 +196,35 @@ namespace acstc {
             _##field = type(std::forward<Args>(args)...);                   \
         }
 
+#define CONFIG_INPUT_MULTI_DATA_DEF(field, field_types...)                  \
+    private:                                                                \
+        types::multi_optional<field_types> _##field;
+
+#define CONFIG_INPUT_MULTI_DATA(name, field, op, type...)                   \
+    public:                                                                 \
+        const auto& name () const {                                         \
+            if (!_##field.template has_value<type>())                       \
+                throw std::runtime_error("Field " #field " has no value");  \
+            return _##field.template value<type>() op;                      \
+        }                                                                   \
+        bool has_##name () const {                                          \
+            return _##field.template has_value<type>();                     \
+        }                                                                   \
+        template<typename... Args>                                          \
+        std::enable_if_t<0 < sizeof...(Args)> name(Args&&... args) {        \
+            _##field = type(std::forward<Args>(args)...);                   \
+        }
+
+#define ASSERT_NO_VALUE(name, var, has_value...)                            \
+    utils::dynamic_assert(!var.has_value(),                                 \
+        "Multiple values provided for " name);
+
+#define READ_INPUT_DATA(type, name, var, func, data, path, assert...)       \
+    if (type == name) {                                                     \
+        assert;                                                             \
+        var = func(data, path);                                             \
+        continue;                                                           \
+    }
 
     template<typename T = types::real_t>
     class config {
@@ -293,41 +252,24 @@ namespace acstc {
                 const auto type = it["type"].template get<std::string>();
 
                 try {
-                    if (type == "bathymetry") {
-                        _bathymetry = _create_bathymetry(it, _path);
-                        continue;
-                    }
+                    READ_INPUT_DATA(type, "k0",          _k0,          _read_k1d_data,   it, _path, ASSERT_NO_VALUE("k0",          _k0,          has_value))
+                    READ_INPUT_DATA(type, "phi_s",       _phi_s,       _read_k1d_data,   it, _path, ASSERT_NO_VALUE("phi_s",       _phi_s,       has_value))
+                    READ_INPUT_DATA(type, "phi_j",       _phi_j,       _read_phi_j,      it, _path, ASSERT_NO_VALUE("phi_j",       _phi_j,       has_value))
+                    READ_INPUT_DATA(type, "frequencies", _frequencies, _read_1d_data,    it, _path, ASSERT_NO_VALUE("frequencies", _frequencies, has_value))
+                    READ_INPUT_DATA(type, "bathymetry",  _bathymetry,  _read_bathymetry, it, _path, ASSERT_NO_VALUE("bathymetry",  _bathymetry,  has_value))
+                    READ_INPUT_DATA(type, "hydrology",   _hydrology,   _read_hydrology,  it, _path, ASSERT_NO_VALUE("hydrology",   _hydrology,   has_value))
+                    READ_INPUT_DATA(type, "receivers",   _receivers,   _read_receivers,  it, _path, ASSERT_NO_VALUE("receivers",   _receivers,   has_value))
 
-                    if (type == "hydrology") {
-                        _hydrology = _create_hydrology(it, _path);
-                        continue;
-                    }
+                    READ_INPUT_DATA(type, "k_j", _k_j, _read_k_j<T>, it, _path,
+                                      ASSERT_NO_VALUE("k_j", _k_j, template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, T>>>))
+                    READ_INPUT_DATA(type, "complex_k_j", _k_j, _read_k_j<std::complex<T>>, it, _path,
+                                      ASSERT_NO_VALUE("complex k_j", _k_j, template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, T>>>))
 
-                    if (type == "receivers") {
-                        _receiver_depth = _create_receiver_depth(it, _path);
-                        continue;
-                    }
+                    READ_INPUT_DATA(type, "source_function", (std::tie(_times, _source_function)), _read_source_function<T>, it, _path,
+                                      ASSERT_NO_VALUE("times", _times, has_value); ASSERT_NO_VALUE("source function", _source_function, has_value))
+                    READ_INPUT_DATA(type, "source_spectrum", (std::tie(_frequencies, _source_spectrum)), _read_source_function<std::complex<T>>, it, _path,
+                                      ASSERT_NO_VALUE("frequencies", _frequencies, has_value); ASSERT_NO_VALUE("source spectrum", _source_spectrum, has_value))
 
-                    if (type == "source_function") {
-                        std::tie(_times, _source_function) = _create_source_function<T>(it, _path);
-                        continue;
-                    }
-
-                    if (type == "source_spectrum") {
-                        if (_frequencies.has_value())
-                            throw std::logic_error("Multiple values given for frequencies");
-
-                        std::tie(_frequencies, _source_spectrum) = _create_source_function<std::complex<T>>(it, _path);
-                        continue;
-                    }
-
-                    if (type == "frequencies") {
-                        if (_frequencies.has_value())
-                            throw std::logic_error("Multiple values given for frequencies");
-
-                        _frequencies = _create_frequences(it, _path);
-                        continue;
-                    }
                 } catch (const std::runtime_error& error) {
                     throw std::runtime_error(utils::join("Error while parsing ", type, ": ", error.what()));
                 }
@@ -346,6 +288,9 @@ namespace acstc {
         CONFIG_DATA_FIELD(y0, T)
         CONFIG_DATA_FIELD(y1, T)
         CONFIG_DATA_FIELD(ny, size_t)
+        CONFIG_DATA_FIELD(z0, T)
+        CONFIG_DATA_FIELD(z1, T)
+        CONFIG_DATA_FIELD(nz, size_t)
         CONFIG_DATA_FIELD(ppm, size_t)
         CONFIG_DATA_FIELD(ord_rich, size_t)
         CONFIG_DATA_FIELD(z_s, T)
@@ -361,8 +306,6 @@ namespace acstc {
         CONFIG_DATA_FIELD(additive_depth, bool)
         CONFIG_DATA_FIELD(past_n, size_t)
         CONFIG_DATA_FIELD(border_width, size_t)
-        CONFIG_DATA_FIELD(k0, types::vector1d_t<T>)
-        CONFIG_DATA_FIELD(phi_s, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(a0, T)
         CONFIG_DATA_FIELD(a1, T)
         CONFIG_DATA_FIELD(na, size_t)
@@ -380,13 +323,28 @@ namespace acstc {
         CONFIG_FIELD(b, T)
         CONFIG_FIELD(c, T)
 
-        CONFIG_INPUT_DATA(bathymetry, utils::linear_interpolated_data_2d<T>, [0])
-        CONFIG_INPUT_DATA(hydrology, utils::delaunay_interpolated_data_2d<T>, [0])
-        CONFIG_INPUT_DATA(receiver_depth, utils::nearest_neighbour_interpolated_data_2d<T>, [0])
-        CONFIG_INPUT_DATA(source_function, types::vector1d_t<T>, ;)
-        CONFIG_INPUT_DATA(source_spectrum, types::vector1d_t<std::complex<T>>, ;)
-        CONFIG_INPUT_DATA(frequencies, types::vector1d_t<T>, ;)
-        CONFIG_INPUT_DATA(times, types::vector1d_t<T>, ;)
+        CONFIG_INPUT_DATA(bathymetry, [0], utils::linear_interpolated_data_2d<T>)
+        CONFIG_INPUT_DATA(hydrology, [0], utils::delaunay_interpolated_data_2d<T>)
+        CONFIG_INPUT_DATA(receivers, ;, types::vector1d_t<types::point<T>>)
+        CONFIG_INPUT_DATA(source_function, ;, types::vector1d_t<T>)
+        CONFIG_INPUT_DATA(source_spectrum, ;, types::vector1d_t<std::complex<T>>)
+        CONFIG_INPUT_DATA(frequencies, ;, types::vector1d_t<T>)
+        CONFIG_INPUT_DATA(times, ;, types::vector1d_t<T>)
+        CONFIG_INPUT_DATA(k0, [_index], types::vector2d_t<T>)
+        CONFIG_INPUT_DATA(phi_s, [_index], types::vector2d_t<T>)
+        CONFIG_INPUT_DATA(phi_j, [_index], types::vector1d_t<utils::linear_interpolated_data_3d<T>>)
+
+        CONFIG_INPUT_MULTI_DATA_DEF(k_j, types::vector1d_t<utils::linear_interpolated_data_2d<T>>, types::vector1d_t<utils::linear_interpolated_data_2d<T, std::complex<T>>>)
+        CONFIG_INPUT_MULTI_DATA(k_j, k_j, [_index], types::vector1d_t<utils::linear_interpolated_data_2d<T>>)
+        CONFIG_INPUT_MULTI_DATA(complex_k_j, k_j, [_index], types::vector1d_t<utils::linear_interpolated_data_2d<T, std::complex<T>>>)
+
+        auto all_k0() const {
+            return _k0.value();
+        }
+
+        auto all_phi_s() const {
+            return _phi_s.value();
+        }
 
         auto x_bounds() const {
             return std::make_tuple(x0(), x1());
@@ -424,51 +382,95 @@ namespace acstc {
             return _index;
         }
 
-        auto z_r(const T& x = T(0), const T& y = T(0)) const {
-            return receiver_depth()[0].point(x, y);
+        auto mnx() const {
+            return _data.contains("mnx") ? _data["mnx"].get<size_t>() : bathymetry().x().size();
         }
 
-        auto mnx() const {
-            if (_data.count("mnx") && _data.count("mny"))
-                return _data["mnx"].template get<size_t>();
-            return bathymetry().x().size();
+        auto mnx(const size_t& n) {
+            _data["mnx"] = n;
         }
 
         auto mny() const {
-            if (_data.count("mny") && (const_modes() || _data.count("mnx")))
-                return _data["mny"].template get<size_t>();
-            return bathymetry().y().size();
+            return _data.contains("mny") ? _data["mny"].get<size_t>() : bathymetry().y().size();
+        }
+
+        auto mny(const size_t& n) {
+            _data["mny"] = n;
+        }
+
+        auto mnz() const {
+            return _data.contains("mnz") ? _data["mnz"].get<size_t>() : nz();
+        }
+
+        auto mnz(const size_t& n) {
+            _data["mnz"] = n;
         }
 
         template<typename V = T>
         auto create_modes(const size_t& c = 0, const bool show_progress = false) const {
-            if (_data.count("modes"))
-                return __impl::modes_creator<T, V>::create(_data["modes"], border_width(), _path);
-            if (_data.count("mnx") && _data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, _data["mnx"].template get<size_t>(), _data["mny"].template get<size_t>(), c, show_progress);
-            return ::acstc::modes<T, V>::create(*this, c, show_progress);
+            if (_k_j.template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>() &&
+                _phi_j.has_value()) {
+                const auto& k_j = std::get<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>(_k_j)[_index];
+                const auto& phi_j = _phi_j.value()[_index];
+                utils::dynamic_assert(k_j.size() >= c,
+                      "Insufficient number of modes. Expect no less than ", c, ", but got ", k_j.size());
+                utils::dynamic_assert(phi_j.size() >= c,
+                      "Insufficient number of modes. Expect no less than ", c, ", but got ", phi_j.size());
+                return std::make_tuple(k_j, phi_j);
+            }
+
+            const auto xn = mnx();
+            const auto yn = mny();
+
+            modes<T, V> modes(*this, utils::mesh_1d(z0(), z1(), mnz()));
+            return modes.interpolated_field(xn, yn, utils::progress_bar_callback(xn * yn, "Modes", show_progress), c);
         }
 
         template<typename V = T>
         auto create_const_modes(const size_t& c = 0, const bool show_progress = false) const {
-            if (_data.count("modes"))
-                return __impl::modes_creator<T, V>::create_const(_data["modes"], _path);
-            if (_data.count("mny"))
-                return ::acstc::modes<T, V>::create(*this, _data["mny"].template get<size_t>(), c, show_progress);
-            return ::acstc::modes<T, V>::create(*this, bathymetry().y().size(), c, show_progress);
+            if (_k_j.template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>() &&
+                _phi_j.has_value()) {
+                const auto& k_j = std::get<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>(_k_j)[_index];
+                const auto& phi_j = _phi_j.value()[_index];
+                utils::dynamic_assert(k_j.size() >= c,
+                                      "Insufficient number of wave numbers. Expected no less than ", c, ", but got ", k_j.size());
+                utils::dynamic_assert(phi_j.size() >= c,
+                                      "Insufficient number of modal functions. Expected no less than ", c, ", but got ", phi_j.size());
+
+                const auto size = std::min(k_j.size(), phi_j.size());
+
+                types::vector2d_t<V> const_k_j(size);
+                types::vector3d_t<T> const_phi_j(size);
+
+                for (size_t j = 0; j < size; ++j) {
+                    const_k_j[j] = k_j[j].data()[0];
+                    const_phi_j[j] = phi_j[j].data()[0];
+                }
+
+                return std::make_tuple(
+                    utils::linear_interpolated_data_1d<T, V>(k_j.template get<1>(), std::move(const_k_j)),
+                    utils::linear_interpolated_data_2d<T, T>(phi_j.template get<1>(), phi_j.template get<2>(), std::move(const_phi_j))
+                );
+            }
+
+            return create_const_modes<V>(utils::mesh_1d(z0(), z1(), mnz()), c, show_progress);
+        }
+
+        template<typename V = T>
+        auto create_const_modes(const types::vector1d_t<T>& z, const size_t& c = 0, const bool show_progress = false) const {
+            const auto yn = mny();
+
+            modes<T, V> modes(*this, z);
+            return modes.interpolated_line(x0(), yn, utils::progress_bar_callback(yn, "Modes", show_progress), c);
         }
 
         auto create_source_modes(const size_t& c = 0) const {
-            if (_data.count("k0") && _data.count("phi_s"))
+            if (has_k0() && has_phi_s())
                 return std::make_tuple(k0(), phi_s());
-            const auto x = T(0);
-            auto n_m = ::acstc::modes<T>::calc_modes(*this, x, bathymetry().point(x, y_s()), z_s(), c);
-            types::vector1d_t<T> k0(n_m.khs.size()), phi_s(n_m.khs.size());
-            for (size_t i = 0; i < k0.size(); ++i) {
-                k0[i] = n_m.khs[i];
-                phi_s[i] = n_m.mfunctions_zr[i][0];
-            }
-            return std::make_tuple(k0, phi_s);
+
+            modes<T> modes(*this, { z_s() });
+            const auto [k0, phi_s] = modes.point(0, y_s(), c);
+            return std::make_tuple(k0, utils::make_vector(phi_s, [](const auto& data) { return data[0]; }));
         }
 
         auto get_tapering_parameters() const {
@@ -484,7 +486,7 @@ namespace acstc {
             json out = _data;
 
             for (auto& it : out["input_data"])
-                _copy_files(it["values"], _get_dim_count(it["dimensions"]), _path, 
+                _copy_files(it["values"], _get_dim_count(it["dimensions"]), _path,
                     output / it["type"].template get<std::string>(), it.contains("binary") && it["binary"].template get<bool>());
 
             if (!_data.count("mnx") || !_data.count("mny")) {
@@ -513,7 +515,7 @@ namespace acstc {
                 { "n_modes", size_t(0) },
                 { "ppm", size_t(2) },
                 { "ord_rich", size_t(3) },
-                { "z_s", T(100) },
+                { "x0", T(0) },
                 { "y_s", T(0) },
                 { "n_layers", size_t(1) },
                 { "bottom_layers", { T(500) } },
@@ -526,12 +528,6 @@ namespace acstc {
                 { "additive_depth", false },
                 { "past_n", size_t(0) },
                 { "border_width", size_t(10) },
-                { "x0", T(0) },
-                { "x1", T(15000) },
-                { "nx", size_t(15001) },
-                { "y0", -T(4000) },
-                { "y1",  T(4000) },
-                { "ny", size_t(8001) },
                 { "coefficients", { "pade" } },
                 { "a0", -T(M_PI) / T(4) },
                 { "a1",  T(M_PI) / T(4) },
@@ -540,7 +536,7 @@ namespace acstc {
                 { "l1", T(4000) },
                 { "nl", size_t(4001) },
                 { "init", "greene" },
-                { "tapering", 
+                { "tapering",
                   { "angled",
                     {
                       { "value", T(0.1) }
@@ -565,7 +561,7 @@ namespace acstc {
             return result;
         }
 
-        static void _copy_files(json& data, const size_t& depth, 
+        static void _copy_files(json& data, const size_t& depth,
             const std::filesystem::path& path, const std::filesystem::path& output, const bool& binary) {
             size_t count = 0;
             _copy_files(data, count, depth, path, output, binary);
@@ -581,10 +577,11 @@ namespace acstc {
 
                 auto filename = output / std::to_string(count++);
                 filename += binary ? ".bin" : ".txt";
-                std::filesystem::copy(utils::make_file_path(path, data.template get<std::string>()), filename,
-                    std::filesystem::copy_options::overwrite_existing);
 
-                data = filename;
+                std::filesystem::copy(utils::make_file_path(path, std::filesystem::path(data.template get<std::string>())),
+                    filename, std::filesystem::copy_options::overwrite_existing);
+
+                data = filename.generic_string();
                 return;
             }
 
@@ -595,11 +592,14 @@ namespace acstc {
                 return;
             }
 
-            throw std::logic_error("Data must be either string or array");
+            if (data.is_object())
+                return;
+
+            throw std::logic_error("Data must be either string, array or object");
         }
 
-        static auto _create_hydrology(const json& data, const std::filesystem::path& path) {
-            const auto [dimensions, inp_data] = __impl::input_data<T, T, T>(data, path);
+        static auto _read_hydrology(const json& data, const std::filesystem::path& path) {
+            const auto [dimensions, inp_data] = _impl::input_data<T, T, T>(data, path);
 
             return ::acstc::hydrology<T>::from_table(
                 dimensions.template get<1>(),
@@ -608,8 +608,8 @@ namespace acstc {
             );
         }
 
-        static auto _create_bathymetry(const json& data, const std::filesystem::path& path) {
-            const auto [dimensions, inp_data] = __impl::input_data<T, T, T>(data, path);
+        static auto _read_bathymetry(const json& data, const std::filesystem::path& path) {
+            const auto [dimensions, inp_data] = _impl::input_data<T, T, T>(data, path);
 
             return ::acstc::bathymetry<T>::from_table(
                 dimensions.template get<0>(),
@@ -618,18 +618,46 @@ namespace acstc {
             );
         }
 
-        static auto _create_receiver_depth(const json& data, const std::filesystem::path& path) {
-            return __impl::create_receiver_depth(__impl::input_data<std::array<T, 3>, utils::no_values_dim>(data, path).data);
+        static auto _read_receivers(const json& data, const std::filesystem::path& path) {
+            return _impl::input_data<types::point<T>, utils::no_values_dim>(data, path).data;
         }
 
         template<typename V = T>
-        static auto _create_source_function(const json& data, const std::filesystem::path& path) {
-            const auto [dimensions, inp_data] = __impl::input_data<V, T>(data, path);
+        static auto _read_source_function(const json& data, const std::filesystem::path& path) {
+            const auto [dimensions, inp_data] = _impl::input_data<V, T>(data, path);
             return std::make_tuple(dimensions.template get<0>(), inp_data);
         }
 
-        static auto _create_frequences(const json& data, const std::filesystem::path& path) {
-            return __impl::input_data<T, utils::no_values_dim>(data, path).data;
+        template<typename V = T>
+        static auto _read_k_j(const json& data, const std::filesystem::path& path) {
+            const auto [dimensions, inp_data] = _impl::input_data<V, utils::var_dim<utils::no_values_dim>, T, T>(data, path);
+            return utils::make_vector(inp_data, [&dimensions](const auto& data) {
+                return utils::linear_interpolated_data_2d<T, V>(
+                    dimensions.template get<1>(),
+                    dimensions.template get<2>(),
+                    data
+                );
+            });
+        }
+
+        static auto _read_phi_j(const json& data, const std::filesystem::path& path) {
+            const auto [dimensions, inp_data] = _impl::input_data<T, utils::var_dim<utils::no_values_dim>, T, T, T>(data, path);
+            return utils::make_vector(inp_data, [&dimensions](const auto& data) {
+                return utils::linear_interpolated_data_3d<T, T>(
+                    dimensions.template get<1>(),
+                    dimensions.template get<2>(),
+                    dimensions.template get<3>(),
+                    data
+                );
+            });
+        }
+
+        static auto _read_1d_data(const json& data, const std::filesystem::path& path) {
+            return _impl::input_data<T, utils::no_values_dim>(data, path).data;
+        }
+
+        static auto _read_k1d_data(const json& data, const std::filesystem::path& path) {
+            return _impl::input_data<T, utils::var_dim<utils::no_values_dim>>(data, path).data;
         }
 
         void _fill_coefficients(const json& data) {
@@ -647,7 +675,8 @@ namespace acstc {
                 _c = data["/1/c"_json_pointer].template get<T>();
                 return;
             }
-            throw std::logic_error("Unknown coefficients type: " + type);
+
+            throw std::runtime_error("Unknown coefficients type: " + type);
         }
 
     };

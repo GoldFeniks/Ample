@@ -26,7 +26,28 @@ include_directories(
     ${Boost_INCLUDE_DIR}
 )
 
-add_executable(ACOUSTIC ${PROJECT_DIR}/build/main.cpp)
+add_executable(ACOUSTIC
+        ${PROJECT_DIR}/build/main.cpp
+        ${PROJECT_DIR}/include/bathymetry.hpp
+        ${PROJECT_DIR}/include/config.hpp
+        ${PROJECT_DIR}/include/hydrology.hpp
+        ${PROJECT_DIR}/include/initial_conditions.hpp
+        ${PROJECT_DIR}/include/io/reader.hpp
+        ${PROJECT_DIR}/include/io/writer.hpp
+        ${PROJECT_DIR}/include/modes.hpp
+        ${PROJECT_DIR}/include/rays.hpp
+        ${PROJECT_DIR}/include/series.hpp
+        ${PROJECT_DIR}/include/solver.hpp
+        ${PROJECT_DIR}/include/utils/callback.hpp
+        ${PROJECT_DIR}/include/utils/convertors.hpp
+        ${PROJECT_DIR}/include/utils/fft.hpp
+        ${PROJECT_DIR}/include/utils/interpolation.hpp
+        ${PROJECT_DIR}/include/utils/progress_bar.hpp
+        ${PROJECT_DIR}/include/utils/types.hpp
+        ${PROJECT_DIR}/include/utils/utils.hpp
+        ${PROJECT_DIR}/include/utils/verbosity.hpp
+        ${PROJECT_DIR}/include/utils/multi_optional.hpp
+        ${PROJECT_DIR}/include/utils/join.hpp)
 
 if(WIN32)
     if (USE_VCPKG)

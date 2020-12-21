@@ -25,31 +25,33 @@ namespace acstc {
 
         solver(const Arg& a,  const Arg& b,  const Arg& c,
                const Arg& x0, const Arg& x1, const size_t& nx,
-               const Arg& y0, const Arg& y1, const size_t& ny)
+               const Arg& y0, const Arg& y1, const size_t& ny,
+               const Arg& z0, const Arg& z1, const size_t& nz)
                : _a(a), _b(b), _c(c), _hx((x1 - x0) / (nx - 1)),
-                 _hy((y1 - y0) / (ny - 1)), _sq_hy(std::pow(_hy, 2)), _x0(x0), _x1(x1), _y0(y0), _y1(y1), _nx(nx), _ny(ny) {}
+                 _hy((y1 - y0) / (ny - 1)), _sq_hy(std::pow(_hy, 2)),
+                 _x0(x0), _x1(x1), _y0(y0), _y1(y1), _nx(nx), _ny(ny), _z0(z0), _z1(z1), _nz(nz) {}
 
         explicit solver(const config<Arg>& config) :
-            solver(config.a(), config.b(), config.c(),
+            solver(config.a(),  config.b(),  config.c(),
                    config.x0(), config.x1(), config.nx(),
-                   config.y0(), config.y1(), config.ny()) {}
+                   config.y0(), config.y1(), config.ny(),
+                   config.z0(), config.z1(), config.nz()) {}
 
         template<typename IN, typename K0, typename CL, typename VL>
         void solve(const IN& init,
                    const K0& k0,
                    const utils::linear_interpolated_data_2d<Arg, VL>& k_int,
-                   const utils::linear_interpolated_data_2d<Arg, Arg>& phi_int,
+                   const utils::linear_interpolated_data_3d<Arg, Arg>& phi_int,
                    CL&& callback,
                    const size_t past_n = 0,
-                   const size_t border_width = 100,
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto mc = k0.size();
             if (init.size() != mc || k_int.size() != mc || phi_int.size() != mc)
-                throw std::logic_error("Arguments init, k0, k, phi must be the same size");
+                throw std::runtime_error("Arguments init, k0, k, phi must be the same size");
 
             types::vector2d_t<VL>  ik(mc, types::vector1d_t<VL>(_ny));
-            types::vector1d_t<Val> ca(mc), s0(mc), bv(_ny, Val(0)), g0(mc), g1(mc), b0(mc), b1(mc), sq_k0(mc);
+            types::vector1d_t<Val> ca(mc), s0(mc), g0(mc), g1(mc), b0(mc), b1(mc), sq_k0(mc);
             types::vector2d_t<Val> cv(mc, types::vector1d_t<Val>(_ny)),
                                    cb(mc, types::vector1d_t<Val>(_ny)),
                                    va(mc, types::vector1d_t<Val>(_ny)),
@@ -58,7 +60,8 @@ namespace acstc {
                                    ls(mc, types::vector1d_t<Val>(_nx)),
                                    fv(mc, types::vector1d_t<Val>(_nx)),
                                    lv(mc, types::vector1d_t<Val>(_nx));
-            types::vector2d_t<Arg> ip(mc, types::vector1d_t<Arg>(_ny));
+            types::vector2d_t<Val> bv(_ny, types::vector1d_t<Val>(_nz, Val(0)));
+            types::vector3d_t<Arg> ip(mc, types::vector2d_t<Arg>(_ny, types::vector1d_t<Arg>(_nz)));
 
             for (size_t j = 0; j < mc; ++j) {
                 sq_k0[j] = std::pow(k0[j], 2);
@@ -73,12 +76,16 @@ namespace acstc {
                 va[j].assign(_ny, b1[j] / den);
                 s0[j] = im * tw * _c / k0[j] / (_b - _c) / _hx - on;
                 va[j][0] = va[j].back() = s0[j] + tw;
+
                 ik[j] = k_int[j].line(_x0, _y0, _y1, _ny);
-                ip[j] = phi_int[j].line(_x0, _y0, _y1, _ny);
+                ip[j] = phi_int[j].field(_x0, _y0, _y1, _ny, _z0, _z1, _nz);
+
                 for (size_t i = 0; i < _ny; ++i) {
                     cv[j][i] = init[j][i];
-                    bv[i] += ip[j][i] * init[j][i];
+                    for (size_t z = 0; z < _nz; ++z)
+                        bv[i][z] += ip[j][i][z] * init[j][i];
                 }
+
                 _fill_parameters(k0[j], ik[j][0], fs[j], vb[j][0]);
                 _fill_parameters(k0[j], ik[j].back(), ls[j], vb[j].back());
             }
@@ -87,8 +94,9 @@ namespace acstc {
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
                 types::vector1d_t<VL> nk(_ny);
-                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
-                types::vector1d_t<Arg> phi(_ny);
+                types::vector1d_t<Val> nv(_ny);
+                types::vector2d_t<Arg> phi(_ny, types::vector1d_t<Arg>(_nz));
+                types::vector2d_t<Val> ov(_ny, types::vector1d_t<Val>(_nz, Val(0)));
 
                 auto pk = ik;
 
@@ -96,10 +104,12 @@ namespace acstc {
                 auto solver = _get_thomas_solver();
 
                 for (size_t i = 1; i < _nx; ++i) {
-                    ov.assign(_ny, Val(0));
+                    for (size_t y = 0; y < _ny; ++y)
+                        ov[y].assign(_nz, Val(0));
+
                     for (size_t j = j0; j < j1; ++j) {
                         k_int[j].line(x, _y0, _y1, nk);
-                        phi_int[j].line(x, _y0, _y1, phi);
+                        phi_int[j].field(x, _y0, _y1, _z0, _z1, phi);
 
                         for (size_t m = 1; m < _ny - 1; ++m) {
                             const auto dd = ((std::pow(nk[m], 2) + std::pow(pk[j][m], 2)) / tw - sq_k0[j] - tw / _sq_hy) / sq_k0[j];
@@ -124,8 +134,11 @@ namespace acstc {
                         fv[j][i] = cv[j][0];
                         lv[j][i] = cv[j].back();
 
-                        for (size_t m = 0; m < _ny; ++m)
-                            ov[m] += phi[m] * cv[j][m] * std::exp(im * k0[j] * x);
+                        for (size_t m = 0; m < _ny; ++m) {
+                            const auto exp = cv[j][m] * std::exp(im * k0[j] * x);
+                            for (size_t z = 0; z < _nz; ++z)
+                                ov[m][z] += phi[m][z] * exp;
+                        }
                     }
 
                     call(x, ov);
@@ -141,31 +154,32 @@ namespace acstc {
         void solve(const IN& init,
                    const K0& k0,
                    const utils::linear_interpolated_data_1d<Arg, VL>& k_int,
-                   const utils::linear_interpolated_data_1d<Arg, Arg>& phi_int,
+                   const utils::linear_interpolated_data_2d<Arg, Arg>& phi_int,
                    CL&& callback,
                    const size_t past_n = 0,
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto mc = k0.size();
             if (init.size() != mc || k_int.size() != mc || phi_int.size() != mc)
-                throw std::logic_error("Vectors init, k0, k, phi must be the same size");
+                throw std::runtime_error("Vectors init, k0, k, phi must be the same size");
 
             types::vector2d_t<VL> k(mc);
-            types::vector2d_t<Arg> phi(mc);
+            types::vector3d_t<Arg> phi(mc);
             for (size_t j = 0; j < mc; ++j) {
                 k[j] = k_int[j].line(_y0, _y1, _ny);
-                phi[j] = phi_int[j].line(_y0, _y1, _ny);
+                phi[j] = phi_int[j].field(_y0, _y1, _ny, _z0, _z1, _nz);
             }
 
-            types::vector1d_t<Val> ca(mc), s0(mc), bv(_ny, Val(0));
-            types::vector2d_t<Val> cv(mc, types::vector1d_t<Val>(_ny)),
-                                   cb(mc, types::vector1d_t<Val>(_ny)),
-                                   va(mc, types::vector1d_t<Val>(_ny)),
-                                   vb(mc, types::vector1d_t<Val>(_ny)),
-                                   fs(mc, types::vector1d_t<Val>(_nx)),
-                                   ls(mc, types::vector1d_t<Val>(_nx)),
-                                   fv(mc, types::vector1d_t<Val>(_nx)),
-                                   lv(mc, types::vector1d_t<Val>(_nx));
+            types::vector1d_t<Val> ca(mc), s0(mc);
+            types::vector2d_t<Val> cv(mc,  types::vector1d_t<Val>(_ny)),
+                                   cb(mc,  types::vector1d_t<Val>(_ny)),
+                                   va(mc,  types::vector1d_t<Val>(_ny)),
+                                   vb(mc,  types::vector1d_t<Val>(_ny)),
+                                   fs(mc,  types::vector1d_t<Val>(_nx)),
+                                   ls(mc,  types::vector1d_t<Val>(_nx)),
+                                   fv(mc,  types::vector1d_t<Val>(_nx)),
+                                   lv(mc,  types::vector1d_t<Val>(_nx)),
+                                   bv(_ny, types::vector1d_t<Val>(_nz, Val(0)));
 
             for (size_t j = 0; j < mc; ++j) {
                 const auto sq_k0 = std::pow(k0[j], 2);
@@ -185,7 +199,8 @@ namespace acstc {
                     cb[j][i] = g0 + g1 * dd;
                     vb[j][i] = b0 + b1 * dd;
                     cv[j][i] = init[j][i];
-                    bv[i] += phi[j][i] * init[j][i];
+                    for (size_t z = 0; z < _nz; ++z)
+                        bv[i][z] += phi[j][i][z] * init[j][i];
                 }
                 _fill_parameters(k0[j], k[j][0], fs[j], vb[j][0]);
                 _fill_parameters(k0[j], k[j].back(), ls[j], vb[j].back());
@@ -194,13 +209,16 @@ namespace acstc {
             callback(_x0, bv);
 
             auto solve_func = [&](const size_t j0, const size_t j1, auto&& call) {
-                types::vector1d_t<Val> nv(_ny), ov(_ny, Val(0));
+                types::vector1d_t<Val> nv(_ny);
+                types::vector2d_t<Val> ov(_ny, types::vector1d_t<Val>(_nz, Val(0)));
 
                 auto x = _x0 + _hx;
                 auto solver = _get_thomas_solver();
 
                 for (size_t i = 1; i < _nx; ++i) {
-                    ov.assign(_ny, Val(0));
+                    for (size_t y = 0; y < _ny; ++y)
+                        ov[y].assign(_nz, Val(0));
+
                     for (size_t j = j0; j < j1; ++j) {
                         nv[0] = s0[j] * cv[j][1];
                         nv.back() = s0[j] * cv[j][_ny - 2];
@@ -218,8 +236,11 @@ namespace acstc {
                         fv[j][i] = cv[j][0];
                         lv[j][i] = cv[j].back();
 
-                        for (size_t m = 0; m < _ny; ++m)
-                            ov[m] += phi[j][m] * cv[j][m] * std::exp(im * k0[j] * x);
+                        for (size_t m = 0; m < _ny; ++m) {
+                            const auto exp = cv[j][m] * std::exp(im * k0[j] * x);
+                            for (size_t z = 0; z < _nz; ++z)
+                                ov[m][z] += phi[j][m][z] * exp;
+                        }
                     }
                     call(x, ov);
                     x += _hx;
@@ -235,8 +256,8 @@ namespace acstc {
         static constexpr auto on = Arg(1);
         static constexpr auto tw = Arg(2);
 
-        const Arg _a, _b, _c, _hx, _hy, _sq_hy, _x0, _x1, _y0, _y1;
-        const size_t _nx, _ny;
+        const Arg _a, _b, _c, _hx, _hy, _sq_hy, _x0, _x1, _y0, _y1, _z0, _z1;
+        const size_t _nx, _ny, _nz;
 
         static auto _start_index(const size_t n, const size_t m) {
             if (n < m)
@@ -313,7 +334,7 @@ namespace acstc {
 
             types::vector1d_t<std::thread> workers;
             workers.reserve(num_workers);
-            types::vector2d_t<Val> ov_buff(buff_size, types::vector1d_t<Val>(_ny, Val(0)));
+            types::vector3d_t<Val> ov_buff(buff_size, types::vector2d_t<Val>(_ny, types::vector1d_t<Val>(_nz, Val(0))));
             types::vector2d_t<bool> done_buff(buff_size, types::vector1d_t<bool>(num_workers, false));
             types::vector1d_t<std::mutex> buff_mutex(buff_size);
             const auto mpw = mc / num_workers;
@@ -325,11 +346,12 @@ namespace acstc {
                             buff_mutex[in].lock();
                             if (!done_buff[in][i])
                                 break;
-                            std::cout << "Buffer size exceeded" << std::endl;
+                            std::cerr << "Buffer size exceeded" << std::endl;
                             buff_mutex[in].unlock();
                         }
                         for (size_t m = 0; m < _ny; ++m)
-                            ov_buff[in][m] += data[m];
+                            for (size_t z = 0; z < _nz; ++z)
+                                ov_buff[in][m][z] += data[m][z];
                         done_buff[in][i] = true;
                         buff_mutex[in].unlock();
                         in = (in + 1) % buff_size;
@@ -342,7 +364,10 @@ namespace acstc {
                 if (std::all_of(done_buff[bi].begin(), done_buff[bi].end(), [](const auto& val) { return val; })) {
                     callback(_x0 + in * _hx, ov_buff[bi]);
                     done_buff[bi].assign(num_workers, false);
-                    ov_buff[bi].assign(_ny, Val(0));
+
+                    for (size_t y = 0; y < _ny; ++y)
+                        ov_buff[bi][y].assign(_nz, Val(0));
+
                     bi = (bi + 1) % buff_size;
                     ++in;
                 }
