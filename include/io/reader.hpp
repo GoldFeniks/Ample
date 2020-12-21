@@ -91,8 +91,8 @@ namespace acstc {
                         else {
                             read_line(stream, result.back());
                             utils::dynamic_assert(result.back().size() == dims.template size<M>(i),
-                                                  utils::join("Incorrect number of elements on line ", line, ". Expected ",
-                                                              dims.template size<M>(i), ", but got ", result.back().size()));
+                                                    "Incorrect number of elements on line ", line, ". Expected ",
+                                                    dims.template size<M>(i), ", but got ", result.back().size());
                             ++line;
                         }
                     }
@@ -109,8 +109,8 @@ namespace acstc {
                     else {
                         read_line(stream, result);
                         utils::dynamic_assert(result.size() == dims.template size<M>(),
-                                              utils::join("Incorrect number of elements on line ", line, ". Expected ",
-                                                          dims.template size<M>(), ", but got ", result.size()));
+                                                "Incorrect number of elements on line ", line, ". Expected ",
+                                                dims.template size<M>(), ", but got ", result.size());
                         ++line;
                     }
 
@@ -118,7 +118,7 @@ namespace acstc {
                 }
         }
 
-    }// namespace __impl
+    }// namespace _impl
 
     template<typename T, typename V = T>
     struct read_data {

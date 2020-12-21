@@ -105,7 +105,7 @@ namespace acstc {
             }
         }
 
-    }// namespace __impl
+    }// namespace _impl
 
     template<typename T>
     class percentage_tapering {
@@ -281,7 +281,7 @@ namespace acstc {
         const auto& as = rx.template get<0>();
         const auto& ls = rx.template get<1>();
 
-        const auto ya = rays::__impl::calc_derivative_x(ry);
+        const auto ya = rays::_impl::calc_derivative_x(ry);
 
         size_t j = 0, i = 0;
         types::vector2d_t<size_t> li(k_j.size(), types::vector1d_t<size_t>(na));

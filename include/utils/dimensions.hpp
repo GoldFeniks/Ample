@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <type_traits>
 #include "types.hpp"
+#include "../io/reader.hpp"
 #include "nlohmann/json.hpp"
 
 namespace acstc {
@@ -16,7 +17,7 @@ namespace acstc {
 
         struct no_values_dim;
 
-        namespace __impl {
+        namespace _impl {
 
             template<typename T>
             struct dim_vector {
@@ -124,6 +125,16 @@ namespace acstc {
                     const auto n = data["n"].template get<size_t>();
 
                     if (data.contains("values")) {
+                        if (data["values"].is_string()) {
+                            std::ifstream inp(data["values"].get<std::string>());
+                            return make_vector_i(n, [&inp](auto&&) {
+                                    D v;
+                                    inp >> v;
+                                    return v;
+                                }
+                            );
+                        }
+
                         const auto result = data["values"].get<vector_type>();
                         if (result.size() != n)
                             throw std::logic_error(
@@ -178,7 +189,7 @@ namespace acstc {
 
             };
 
-        }// namespace __impl
+        }// namespace _impl
 
         template<typename>
         struct is_variable_dim {
@@ -203,7 +214,7 @@ namespace acstc {
         private:
 
             using value_t = std::tuple<T...>;
-            using data_t = std::tuple<__impl::dim_vector_t<T>...>;
+            using data_t = std::tuple<_impl::dim_vector_t<T>...>;
 
         public:
 
@@ -211,7 +222,7 @@ namespace acstc {
 
             explicit dimensions(const json& data) {
                 if (data.size() != N)
-                    throw std::logic_error(
+                    throw std::runtime_error(
                         std::string("Wrong number of dimensions. Got ") + 
                         std::to_string(data.size()) +
                         ". Required " + 
@@ -223,12 +234,12 @@ namespace acstc {
 
             template<size_t N, typename... Args>
             const auto& get(const Args&... args) const {
-                return __impl::value_getter<std::tuple_element_t<N, value_t>>::get(std::get<N>(_data), args...);
+                return _impl::value_getter<std::tuple_element_t<N, value_t>>::get(std::get<N>(_data), args...);
             }
 
             template<size_t N, typename... Args>
             auto size(const Args&... args) const {
-                return __impl::size_getter<std::tuple_element_t<N, value_t>>::get(std::get<N>(_data), args...);
+                return _impl::size_getter<std::tuple_element_t<N, value_t>>::get(std::get<N>(_data), args...);
             }
 
             template<size_t M>
@@ -243,7 +254,7 @@ namespace acstc {
 
             template<size_t... I>
             void _read_dimensions(const json& data, const std::integer_sequence<size_t, I...>&) {
-                ((std::get<I>(_data) = __impl::data_reader<std::tuple_element_t<I, value_t>>::read(data[I])),...);
+                ((std::get<I>(_data) = _impl::data_reader<std::tuple_element_t<I, value_t>>::read(data[I])),...);
             }
 
         };
