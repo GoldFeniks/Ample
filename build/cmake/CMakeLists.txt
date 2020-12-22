@@ -28,9 +28,7 @@ include_directories(
 
 add_executable(ACOUSTIC
         ${PROJECT_DIR}/build/main.cpp
-        ${PROJECT_DIR}/include/bathymetry.hpp
         ${PROJECT_DIR}/include/config.hpp
-        ${PROJECT_DIR}/include/hydrology.hpp
         ${PROJECT_DIR}/include/initial_conditions.hpp
         ${PROJECT_DIR}/include/io/reader.hpp
         ${PROJECT_DIR}/include/io/writer.hpp

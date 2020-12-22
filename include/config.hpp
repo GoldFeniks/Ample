@@ -11,8 +11,7 @@
 #include <unordered_map>
 #include "modes.hpp"
 #include "series.hpp"
-#include "hydrology.hpp"
-#include "bathymetry.hpp"
+#include "io/reader.hpp"
 #include "feniks/zip.hpp"
 #include "utils/join.hpp"
 #include "utils/types.hpp"
@@ -60,8 +59,7 @@ namespace acstc {
                         );
                     else
                         return make_vector<M>(data, dims, path, binary);
-                }
-                else {
+                } else {
                     if constexpr (utils::dimensions<D...>::template is_variable_dim<M>) {
                         check_array_size<M>(data, dims.template size<M>());
 
@@ -601,17 +599,31 @@ namespace acstc {
         static auto _read_hydrology(const json& data, const std::filesystem::path& path) {
             const auto [dimensions, inp_data] = _impl::input_data<T, T, T>(data, path);
 
-            return ::acstc::hydrology<T>::from_table(
-                dimensions.template get<1>(),
-                dimensions.template get<0>(),
-                inp_data
-            );
+            const auto& x = dimensions.template get<1>();
+            const auto& z = dimensions.template get<1>();
+
+            types::vector1d_t<T> px, pz, vv;
+            px.reserve(z.size() * x.size());
+            pz.reserve(z.size() * x.size());
+            vv.reserve(z.size() * x.size());
+            for (size_t i = 0; i < z.size(); ++i)
+                for (size_t j = 0; j < x.size(); ++j)
+                    if (inp_data[i][j] > -T(1e-10)) {
+                        pz.emplace_back(z[i]);
+                        px.emplace_back(x[j]);
+                        vv.emplace_back(inp_data[i][j]);
+                    }
+            pz.shrink_to_fit();
+            px.shrink_to_fit();
+            vv.shrink_to_fit();
+
+            return utils::delaunay_interpolated_data_2d<T>({px, pz}, vv);
         }
 
         static auto _read_bathymetry(const json& data, const std::filesystem::path& path) {
             const auto [dimensions, inp_data] = _impl::input_data<T, T, T>(data, path);
 
-            return ::acstc::bathymetry<T>::from_table(
+            return utils::linear_interpolated_data_2d<T>(
                 dimensions.template get<0>(),
                 dimensions.template get<1>(),
                 inp_data
