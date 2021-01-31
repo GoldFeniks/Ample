@@ -28,7 +28,10 @@
         {
             "type": "hydrology",
             "dimensions": [ 2, 2 ],
-            "values": "test_hydr.txt"
+            "values": [
+                [1500, 1500],
+                [1500, 1500]
+            ]
         }
     ]
 }
