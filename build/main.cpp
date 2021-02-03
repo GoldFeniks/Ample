@@ -1299,7 +1299,6 @@ int main(int argc, const char* argv[]) {
                 "], ... ] (=solution) [options]\n" << desc << std::endl;
             return 0;
         }
-        acstc::utils::verbosity::instance().level = 3;
 
         jobs_config.binary = vm.count("binary");
         jobs_config.perform();
