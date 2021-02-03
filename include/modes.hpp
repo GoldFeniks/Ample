@@ -352,9 +352,11 @@ namespace acstc {
         NormalModes _n_m;
         const config<T>& _config;
 
+        static constexpr T eps = 1e-5;
+
         static void _check_z(const types::vector1d_t<T>& z) {
-            utils::dynamic_assert(std::all_of(z.begin(), z.end(), [](const auto& v) { return v >= T(0); }),
-                  "All z coordinates must be positive");
+            utils::dynamic_assert(std::all_of(z.begin(), z.end(), [](const auto& v) { return v >= -eps; }),
+                  "All z coordinates must be non-negative");
         }
 
         static void _smooth(const T& h, const size_t& count, types::vector3d_t<V>& k_j, types::vector4d_t<T>& phi_j) {
@@ -380,6 +382,12 @@ namespace acstc {
 
         void _point(const T& x, const T& y, const T& depth, const size_t& c = -1) {
             utils::dynamic_assert(_n_m.zr.size() > 0, "There must be at least one depth value");
+
+            if (depth <= eps) {
+                _n_m.khs.clear();
+                _n_m.mfunctions_zr.clear();
+                return;
+            }
 
             _n_m.nmod = static_cast<int>(c == -1 ? _config.n_modes() : c);
             _n_m.alpha = M_PI / 180 * (_n_m.nmod > 0);
