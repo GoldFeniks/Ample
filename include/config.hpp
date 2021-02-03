@@ -241,9 +241,7 @@ namespace acstc {
 
         void update_from_file(const std::string& filename) {
             _path = filename;
-            std::ifstream in(filename);
-            json data;
-            in >> data;
+            const json data = json::parse(std::ifstream(filename), nullptr, true, true);
             _data.merge_patch(data);
 
             for (const auto& it : _data["input_data"]) {
