@@ -9,17 +9,24 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR};${CMAKE_MODULE_PATH}")
 
 set(PROJECT_DIR ${PROJECT_SOURCE_DIR}/../../)
 
+add_subdirectory(${PROJECT_DIR}/modules/CAMBALA/src/normal_modes ${CMAKE_BINARY_DIR}/normal_modes)
+set_target_properties(normal_modes_sample alglib PROPERTIES EXCLUDE_FROM_ALL true EXCLUDE_FROM_DEFAULT_BUILD true)
+
 # FFTW3 is currently broken on Linux
 if(WIN32)
     find_package(FFTW3 REQUIRED)
+    set(FFTW3_LIBRARIES FFTW3::fftw3)
+else()
+    set(FFTW3_LIBRARIES fftw3)
 endif()
 
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(Boost 1.69 COMPONENTS program_options REQUIRED)
+
 include_directories(
     ${PROJECT_DIR}/include 
-    ${PROJECT_DIR}/modules/Acoustics-at-home/src/cambala
+    ${PROJECT_DIR}/modules/CAMBALA/src/normal_modes
     ${PROJECT_DIR}/modules/delaunay
     ${PROJECT_DIR}/modules/DORK/include
     ${PROJECT_DIR}/modules/zip/include
@@ -45,26 +52,17 @@ add_executable(ACOUSTIC
         ${PROJECT_DIR}/include/utils/utils.hpp
         ${PROJECT_DIR}/include/utils/verbosity.hpp
         ${PROJECT_DIR}/include/utils/multi_optional.hpp
-        ${PROJECT_DIR}/include/utils/join.hpp)
+        ${PROJECT_DIR}/include/utils/join.hpp
+)
 
-if(WIN32)
-    if (USE_VCPKG)
-        set_target_properties(ACOUSTIC PROPERTIES VS_GLOBAL_VcpkgEnabled true)
-    endif()
-    
-    target_link_libraries(ACOUSTIC 
-        Threads::Threads
-        nlohmann_json::nlohmann_json
-        ${Boost_LIBRARIES} 
-        ${PROJECT_DIR}/modules/Acoustics-at-home/lib/normal_modes.lib
-        FFTW3::fftw3
-    )
-else()
-    target_link_libraries(ACOUSTIC 
-        Threads::Threads
-        nlohmann_json::nlohmann_json
-        ${Boost_LIBRARIES} 
-        ${PROJECT_DIR}/modules/Acoustics-at-home/lib/libnormal_modes.a
-        fftw3
-    )
+if(WIN32 AND USE_VCPKG)
+    set_target_properties(ACOUSTIC PROPERTIES VS_GLOBAL_VcpkgEnabled true)
 endif()
+
+target_link_libraries(ACOUSTIC 
+    Threads::Threads
+    nlohmann_json::nlohmann_json
+    ${Boost_LIBRARIES} 
+    normal_modes
+    ${FFTW3_LIBRARIES}
+)

@@ -1,6 +1,6 @@
-[submodule "modules/Acoustics-at-home"]
-	path = modules/Acoustics-at-home
-	url = https://github.com/Nauchnik/Acoustics-at-home.git
+[submodule "modules/CAMBALA"]
+	path = modules/CAMBALA
+	url = https://github.com/Nauchnik/CAMBALA.git
 [submodule "modules/delaunay"]
 	path = modules/delaunay
 	url = https://github.com/GoldFeniks/delaunay.git
