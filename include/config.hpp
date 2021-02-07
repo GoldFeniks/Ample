@@ -177,9 +177,9 @@ namespace acstc {
         void field (const type& value) { _##field = value; }                \
         void field (type&& value) { _##field = std::move(value); }
 
-#define CONFIG_INPUT_DATA(field, op, type...)                               \
+#define CONFIG_INPUT_DATA(field, op, ...)                                   \
     private:                                                                \
-        std::optional<type> _##field;                                       \
+        std::optional<__VA_ARGS__> _##field;                                \
     public:                                                                 \
         const auto& field () const {                                        \
             utils::dynamic_assert(_##field.has_value(),                     \
@@ -191,35 +191,35 @@ namespace acstc {
         }                                                                   \
         template<typename... Args>                                          \
         std::enable_if_t<0 < sizeof...(Args)> field(Args&&... args) {       \
-            _##field = type(std::forward<Args>(args)...);                   \
+            _##field = __VA_ARGS__(std::forward<Args>(args)...);            \
         }
 
-#define CONFIG_INPUT_MULTI_DATA_DEF(field, field_types...)                  \
+#define CONFIG_INPUT_MULTI_DATA_DEF(field, ...)                             \
     private:                                                                \
-        types::multi_optional<field_types> _##field;
+        types::multi_optional<__VA_ARGS__> _##field;
 
-#define CONFIG_INPUT_MULTI_DATA(name, field, op, type...)                   \
+#define CONFIG_INPUT_MULTI_DATA(name, field, op, ...)                       \
     public:                                                                 \
         const auto& name () const {                                         \
-            if (!_##field.template has_value<type>())                       \
+            if (!_##field.template has_value<__VA_ARGS__>())                \
                 throw std::runtime_error("Field " #field " has no value");  \
-            return _##field.template value<type>() op;                      \
+            return _##field.template value<__VA_ARGS__>() op;               \
         }                                                                   \
         bool has_##name () const {                                          \
-            return _##field.template has_value<type>();                     \
+            return _##field.template has_value<__VA_ARGS__>();              \
         }                                                                   \
         template<typename... Args>                                          \
         std::enable_if_t<0 < sizeof...(Args)> name(Args&&... args) {        \
-            _##field = type(std::forward<Args>(args)...);                   \
+            _##field = __VA_ARGS__(std::forward<Args>(args)...);            \
         }
 
-#define ASSERT_NO_VALUE(name, var, has_value...)                            \
-    utils::dynamic_assert(!var.has_value(),                                 \
+#define ASSERT_NO_VALUE(name, var, ...)                                     \
+    utils::dynamic_assert(!var.__VA_ARGS__(),                               \
         "Multiple values provided for " name);
 
-#define READ_INPUT_DATA(type, name, var, func, data, path, assert...)       \
+#define READ_INPUT_DATA(type, name, var, func, data, path, ...)             \
     if (type == name) {                                                     \
-        assert;                                                             \
+        __VA_ARGS__;                                                        \
         var = func(data, path);                                             \
         continue;                                                           \
     }

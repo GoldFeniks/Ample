@@ -1,6 +1,5 @@
 #pragma once
 #include <tuple>
-#include <complex>
 #include <cstddef>
 #include <istream>
 #include <algorithm>
@@ -9,7 +8,6 @@
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/callback.hpp"
-#include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
 
 namespace acstc {
