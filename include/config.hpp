@@ -650,7 +650,7 @@ namespace acstc {
             const auto [dimensions, inp_data] = _impl::input_data<T, T, T>(data, path);
 
             const auto& x = dimensions.template get<1>();
-            const auto& z = dimensions.template get<1>();
+            const auto& z = dimensions.template get<0>();
 
             types::vector1d_t<T> px, pz, vv;
             px.reserve(z.size() * x.size());
