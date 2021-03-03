@@ -241,7 +241,52 @@ namespace acstc {
 
         void update_from_file(const std::string& filename) {
             _path = filename;
-            const json data = json::parse(std::ifstream(filename), nullptr, true, true);
+
+            auto cb =
+                    [keys=types::vector1d_t<std::unordered_set<std::string>>(1), path=std::vector<std::string>(1), indx=std::vector<int>(1, -2)]
+                    (const int& depth, const json::parse_event_t event, json& parsed) mutable {
+                        switch (event) {
+                            case json::parse_event_t::array_end:
+                                indx[depth + 1] = -2;
+                            case json::parse_event_t::object_end:
+                                keys[depth + 1].clear();
+                                path[depth + 1].clear();
+                                break;
+                            case json::parse_event_t::array_start:
+                            case json::parse_event_t::object_start:
+                                if (keys.size() == depth + 1) {
+                                    keys.emplace_back();
+                                    path.emplace_back();
+                                    indx.emplace_back(-2);
+                                }
+
+                                if (event == json::parse_event_t::array_start)
+                                    indx[depth + 1] = -1;
+                            case json::parse_event_t::value:
+                                if (indx[depth] >= -1)
+                                    ++indx[depth];
+                                break;
+                            case json::parse_event_t::key:
+                            {
+                                const auto p = keys[depth].insert(path[depth] = parsed.get<std::string>());
+                                if (!p.second) {
+                                    for (int i = 0; i < depth; ++i)
+                                        if (indx[i] >= 0)
+                                            path[i] = std::to_string(indx[i]);
+
+                                    throw std::runtime_error(
+                                            utils::join("Duplicate key \"",
+                                                utils::join_it(path.begin() + 1, path.begin() + depth + 1, "/"),'"'));
+                                }
+                                break;
+                            }
+                            default:
+                                break;
+                        }
+
+                        return true;
+            };
+            const json data = json::parse(std::ifstream(filename), cb, true, true);
             _data.merge_patch(data);
 
             for (const auto& it : _data["input_data"]) {
