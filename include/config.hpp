@@ -289,6 +289,13 @@ namespace acstc {
             const json data = json::parse(std::ifstream(filename), cb, true, true);
             _data.merge_patch(data);
 
+            const auto bls = bottom_layers().size();
+            utils::dynamic_assert(betas().size() == n_layers() + bls,
+                                  "Size of \"betas\"(", betas().size(), ") must be equal to n_layers + size of \"bottom_layers\"(", n_layers() + bls, ")");
+            utils::dynamic_assert(bls == bottom_rhos().size() && bls == bottom_c1s().size() && bls == bottom_c2s().size(),
+                                  "Size of \"bottom_layers\"(", bls, "), \"bottom_rhos\"(", bottom_rhos().size(),
+                                  "), \"bottom_c1s\"(", bottom_c1s().size(), ") and \"bottom_c2s\"(", bottom_c2s().size(), ") must be the same");
+
             for (const auto& it : _data["input_data"]) {
                 const auto type = it["type"].template get<std::string>();
 
