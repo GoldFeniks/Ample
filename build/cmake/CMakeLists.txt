@@ -10,7 +10,7 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR};${CMAKE_MODULE_PATH}")
 set(PROJECT_DIR ${PROJECT_SOURCE_DIR}/../../)
 
 add_subdirectory(${PROJECT_DIR}/modules/CAMBALA/src/normal_modes ${CMAKE_BINARY_DIR}/normal_modes)
-set_target_properties(normal_modes_sample alglib PROPERTIES EXCLUDE_FROM_ALL true EXCLUDE_FROM_DEFAULT_BUILD true)
+set_target_properties(normal_modes_sample alglib PROPERTIES EXCLUDE_FROM_ALL ON EXCLUDE_FROM_DEFAULT_BUILD ON)
 
 # FFTW3 is currently broken on Linux
 if(WIN32)
