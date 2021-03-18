@@ -815,7 +815,7 @@ private:
 
         out << std::setw(4) << _get_meta_for(type, dimensions, files);        
 
-        _meta["outputs"].push_back(filename.parent_path().filename() / filename.filename());
+        _meta["outputs"].push_back((filename.parent_path().filename() / filename.filename()).generic_string());
     }
 
     json _get_meta_for(const std::string& type, const json& dimensions, const std::string& file) {
