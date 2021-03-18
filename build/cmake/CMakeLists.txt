@@ -20,6 +20,10 @@ else()
     set(FFTW3_LIBRARIES fftw3)
 endif()
 
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+endif()
+
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(Boost 1.69 COMPONENTS program_options REQUIRED)
