@@ -28,7 +28,8 @@ namespace acstc::utils {
 
             while (c <= coords.front() && j < n) {
                 d1[j] = is[j] = 0;
-                d2[j] = d12[j] = js[j] = 1;
+                d2[j] = d12[j] = 1;
+                js[j] = (n > 1 ? 1 : 0);
                 ++j;
                 c += h;
             }
