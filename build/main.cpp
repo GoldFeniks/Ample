@@ -765,7 +765,7 @@ public:
             );
 
         if (jobs.has_job("solution"))
-            _save_meta_for("solution", { _n_modes, dimx, dimy, dimz }, files);
+            _save_meta_for("solution", { _n_modes.size(), dimx, dimy, dimz }, files);
 
         std::ofstream out(output / "meta.json");
         out << std::setw(4) << _meta << std::endl;
@@ -799,7 +799,7 @@ private:
                 {
                     { "a", a },
                     { "b", b },
-                    { "d", (b - a) / (n - 1) }
+                    { "d", n > 1 ? (b - a) / (n - 1) : size_t(0) }
                 }
             }
         };
