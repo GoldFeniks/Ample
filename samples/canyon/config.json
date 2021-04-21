@@ -9,7 +9,7 @@
     "z1": 10,
     "nz": 1,
     "z_s": 10,
-    "bottom_rho": [2],
+    "bottom_rhos": [2],
     "bottom_c1s": [1800],
     "bottom_c2s": [1800],
     "init": "greene",
