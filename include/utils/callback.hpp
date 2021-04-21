@@ -7,7 +7,7 @@
 #include "verbosity.hpp"
 #include "progress_bar.hpp"
 
-namespace acstc::utils {
+namespace ample::utils {
 
     namespace _impl {
 
@@ -162,4 +162,4 @@ namespace acstc::utils {
         return _impl::progress_bar_callback(n, title, enabled, leave);
     }
 
-}// namespace acstc::utils
+}// namespace ample::utils

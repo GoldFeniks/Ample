@@ -6,7 +6,7 @@
 #include <exception>
 #include <type_traits>
 
-namespace acstc::types {
+namespace ample::types {
 
     template<typename T, size_t N>
     struct vectornd {
@@ -46,4 +46,4 @@ namespace acstc::types {
     template<typename T>
     struct point { T x, y, z; };
 
-}// namespace acstc::types
+}// namespace ample::types

@@ -3,7 +3,7 @@
 #include <optional>
 #include <type_traits>
 
-namespace acstc::types {
+namespace ample::types {
 
     namespace _impl {
 
@@ -75,12 +75,12 @@ namespace acstc::types {
 
     };
 
-}// namespace acstc::types
+}// namespace ample::types
 
 namespace std {
 
     template<typename V, typename... T>
-    constexpr const V& get(const acstc::types::multi_optional<T...>& optional) {
+    constexpr const V& get(const ample::types::multi_optional<T...>& optional) {
         return optional.template value<V>();
     }
 

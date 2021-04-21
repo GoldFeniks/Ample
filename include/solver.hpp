@@ -14,7 +14,7 @@
 #undef IN
 #endif
 
-namespace acstc {
+namespace ample {
     
     using namespace std::complex_literals;
 
@@ -380,4 +380,4 @@ namespace acstc {
 
     };
 
-}// namespace acstc
+}// namespace ample

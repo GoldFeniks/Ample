@@ -22,7 +22,7 @@
 #include "initial_conditions.hpp"
 #include "utils/multi_optional.hpp"
 
-namespace acstc {
+namespace ample {
 
     using nlohmann::json;
 
@@ -34,7 +34,7 @@ namespace acstc {
         struct input_data {
 
             utils::dimensions<D...> dimensions;
-            decltype(acstc::vector_reader<T>::template read<0, D...>(std::declval<std::istream>(), dimensions)) data;
+            decltype(ample::vector_reader<T>::template read<0, D...>(std::declval<std::istream>(), dimensions)) data;
 
             explicit input_data(const json& data, const std::filesystem::path& path) :
                 dimensions(data["dimensions"]),
@@ -129,8 +129,8 @@ namespace acstc {
             static auto read_data(const utils::dimensions<D...>& dims, const std::filesystem::path& path, const std::string& filename, const bool& binary) {
                 const auto file_path = utils::make_file_path(path, filename);
                 if (binary)
-                    return acstc::vector_reader<T>::template binary_read<M, D...>(std::ifstream(file_path, std::ios::binary), dims);
-                return acstc::vector_reader<T>::template read<M, D...>(std::ifstream(file_path), dims);
+                    return ample::vector_reader<T>::template binary_read<M, D...>(std::ifstream(file_path, std::ios::binary), dims);
+                return ample::vector_reader<T>::template read<M, D...>(std::ifstream(file_path), dims);
             }
 
             template<size_t M>
@@ -743,4 +743,4 @@ namespace acstc {
 
     };
 
-}// namespace acstc
+}// namespace ample

@@ -1,4 +1,4 @@
-# Acoustic
+# AMPLE Mode ParaboLic Equation
 
 Wide-anlge mode parabolic equation (WAMPE) solver for Helmholtz equation.
 
@@ -23,7 +23,7 @@ PS> ./vcpkg install --triplet x64-windows boost-program-options fftw3 nlohmann-j
 
 ```bash
 $ cd build/cmake
-$ mkdir ACOUSTIC && cd ACOUSTIC
+$ mkdir AMPLE && cd AMPLE
 $ cmake -DCMAKE_BUILD_TYPE=Release ..
 $ make
 ```
@@ -32,7 +32,7 @@ $ make
 
 ```powershell
 PS> cd build/cmake
-PS> mkdir ACOUSTIC
-PS> cd ACOUSTIC
+PS> mkdir AMPLE
+PS> cd AMPLE
 PS> cmake -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]\scripts\buildsystems\vcpkg.cmake -DUSE_VCPKG=true -DCMAKE_BUILD_TYPE=Release ..
 ```

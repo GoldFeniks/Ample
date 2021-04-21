@@ -9,7 +9,7 @@
 #include "../utils/convertors.hpp"
 #include "../utils/dimensions.hpp"
 
-namespace acstc {
+namespace ample {
 
     namespace _impl {
 
@@ -277,4 +277,4 @@ namespace acstc {
 
     };
 
-}// namespace acstc
+}// namespace ample

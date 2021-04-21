@@ -9,7 +9,7 @@
 #include <type_traits>
 #include "../utils/types.hpp"
 
-namespace acstc {
+namespace ample {
 
     namespace utils {
 
@@ -211,4 +211,4 @@ namespace acstc {
 
     };// namespace utils
 
-}// namespace acstc
+}// namespace ample

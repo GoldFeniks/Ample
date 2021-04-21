@@ -2,7 +2,7 @@
 #include <string>
 #include <sstream>
 
-namespace acstc::utils {
+namespace ample::utils {
 
     template<typename It>
     std::string join_it(It begin, const It& end, const std::string& sep = " ") {
@@ -24,4 +24,4 @@ namespace acstc::utils {
         return result.str();
     }
 
-}// namespace acstc::utils
+}// namespace ample::utils

@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <iostream>
 
-namespace acstc::utils {
+namespace ample::utils {
 
     namespace _impl {
 
@@ -89,4 +89,4 @@ namespace acstc::utils {
         verbosity::instance().verboseln_lv<T...>(level, values...);
     }
 
-}// namespace acstc::utils
+}// namespace ample::utils

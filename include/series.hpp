@@ -5,7 +5,7 @@
 #include <type_traits>
 #include "utils/types.hpp"
 
-namespace acstc::series {
+namespace ample::series {
 
     namespace _impl {
 
@@ -148,4 +148,4 @@ namespace acstc::series {
 
     };
 
-}// namespace acstc::series
+}// namespace ample::series

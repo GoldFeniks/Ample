@@ -4,7 +4,7 @@
 #include <type_traits>
 #include "fftw3.h"
 
-namespace acstc::utils {
+namespace ample::utils {
 
     namespace _impl {
 
@@ -201,4 +201,4 @@ namespace acstc::utils {
     template<typename T, typename V>
     using complex_fft = _impl::basic_fft<T, V, true>;
 
-}// namespace acstc::utils
+}// namespace ample::utils

@@ -38,17 +38,17 @@
 #include "utils/multi_optional.hpp"
 #include "boost/program_options.hpp"
 
-namespace types = acstc::types;
+namespace types = ample::types;
 namespace po = boost::program_options;
 
 using nlohmann::json;
-using acstc::utils::verboseln;
-using acstc::utils::verboseln_lv;
+using ample::utils::verboseln;
+using ample::utils::verboseln_lv;
 using namespace std::complex_literals;
 
 static constexpr size_t max_elements = 5;
 
-acstc::config<types::real_t> config;
+ample::config<types::real_t> config;
 
 enum class field_group : uint64_t {
     nothing = 0,
@@ -67,7 +67,7 @@ bool operator&(const field_group& a, const field_group& b) {
 }
 
 inline bool verbose(const size_t& level) {
-    return acstc::utils::verbosity::instance().level >= level;
+    return ample::utils::verbosity::instance().level >= level;
 }
 
 class to_string_helper {
@@ -363,7 +363,7 @@ void print_solver(std::stringstream& stream) {
         const auto& receivers = config.receivers();
         const auto rn = std::min(max_elements, receivers.size());
         stream << "    Receivers:\n";
-        print_table(acstc::utils::mesh_1d<size_t>(0, rn - 1, rn), types::vector1d_t<char>{'x', 'y', 'z'},
+        print_table(ample::utils::mesh_1d<size_t>(0, rn - 1, rn), types::vector1d_t<char>{'x', 'y', 'z'},
                     receivers, stream, rn < receivers.size()
         );
     }
@@ -415,19 +415,19 @@ template<typename F>
 auto pass_tapering(const F& func) {
     const auto& [type, vl, vr] = config.get_tapering_parameters();
     if (type == "percentage")
-        return func(acstc::percentage_tapering(vl, vr));
+        return func(ample::percentage_tapering(vl, vr));
     if (type == "angled")
-        return func(acstc::angled_tapering(vl, vr));
+        return func(ample::angled_tapering(vl, vr));
 
     throw std::runtime_error(std::string("Unknown tapering type: ") + type);
 }
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
-    const acstc::utils::linear_interpolated_data_1d<types::real_t>& k_j) {
+    const ample::utils::linear_interpolated_data_1d<types::real_t>& k_j) {
     return pass_tapering(
         [&](const auto& tapering) {
-            return acstc::ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 0., config.y_s(), config.l1(), config.nl(),
+            return ample::ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 0., config.y_s(), config.l1(), config.nl(),
                 config.a0(), config.a1(), config.na(), k0, phi_s, k_j, tapering);
         }
     );
@@ -445,38 +445,38 @@ auto get_ray_initial_conditions(const KS& k0, const PS& phi_s) {
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
-    const acstc::utils::linear_interpolated_data_1d<types::real_t, types::complex_t>& k_j) {
+    const ample::utils::linear_interpolated_data_1d<types::real_t, types::complex_t>& k_j) {
     const auto& ys = k_j.get<0>();
     types::vector2d_t<types::real_t> new_k_j(k_j.size(), types::vector1d_t<types::real_t>(ys.size()));
 
     for (size_t j = 0; j < k_j.size(); ++j)
         std::transform(k_j[j].data().begin(), k_j[j].data().end(), new_k_j[j].begin(), [](const auto& v) { return v.real(); });
 
-    return get_ray_initial_conditions(k0, phi_s, acstc::utils::linear_interpolated_data_1d<types::real_t>(ys, new_k_j));
+    return get_ray_initial_conditions(k0, phi_s, ample::utils::linear_interpolated_data_1d<types::real_t>(ys, new_k_j));
 }
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
-    const acstc::utils::linear_interpolated_data_2d<types::real_t>& k_j) {
+    const ample::utils::linear_interpolated_data_2d<types::real_t>& k_j) {
     types::vector2d_t<types::real_t> new_k_j;
     new_k_j.reserve(k_j.size());
 
     for (size_t j = 0; j < k_j.size(); ++j)
         new_k_j.emplace_back(k_j[j][0].begin(), k_j[j][0].end());
 
-    return get_ray_initial_conditions(k0, phi_s, acstc::utils::linear_interpolated_data_1d<types::real_t>(k_j.get<1>(), new_k_j));
+    return get_ray_initial_conditions(k0, phi_s, ample::utils::linear_interpolated_data_1d<types::real_t>(k_j.get<1>(), new_k_j));
 }
 
 template<typename KS, typename PS>
 auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
-    const acstc::utils::linear_interpolated_data_2d<types::real_t, types::complex_t>& k_j) {
+    const ample::utils::linear_interpolated_data_2d<types::real_t, types::complex_t>& k_j) {
     const auto& ys = k_j.get<1>();
     types::vector2d_t<types::real_t> new_k_j(k_j.size(), types::vector1d_t<types::real_t>(ys.size()));
 
     for (size_t j = 0; j < k_j.size(); ++j)
         std::transform(k_j[j][0].begin(), k_j[j][0].end(), new_k_j[j].begin(), [](const auto& v) { return v.real(); });
 
-    return get_ray_initial_conditions(k0, phi_s, acstc::utils::linear_interpolated_data_1d<types::real_t>(ys, new_k_j));
+    return get_ray_initial_conditions(k0, phi_s, ample::utils::linear_interpolated_data_1d<types::real_t>(ys, new_k_j));
 }
 
 template<typename KS, typename PS>
@@ -489,15 +489,15 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
     std::transform(k0.begin(), k0.end(), ws.begin(), [](const auto& k0) { return 1 / std::pow(k0, 2); } );
 
     if (init == "greene")
-        return acstc::greene_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
+        return ample::greene_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
 
     if (init == "gauss")
-        return acstc::gaussian_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
+        return ample::gaussian_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
 
     if (init == "ray_simple")
         return pass_tapering(
             [&](const auto& tapering) {
-                return acstc::simple_ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 
+                return ample::simple_ray_source(config.x0(), config.y0(), config.y1(), config.ny(),
                     config.a0(), config.a1(), k0, phi_s, tapering);
             }
         );
@@ -526,20 +526,20 @@ auto get_initial_conditions(const KS& k0, const PS& phi_s) {
 }
 
 template<typename V, typename W>
-void write_modes(const acstc::utils::linear_interpolated_data_1d<types::real_t, V>& modes, W&& writer) {
+void write_modes(const ample::utils::linear_interpolated_data_1d<types::real_t, V>& modes, W&& writer) {
     for (size_t i = 0; i < modes.size(); ++i)
         writer(modes[i].data());
 }
 
 template<typename V, typename W>
-void write_modes(const acstc::utils::linear_interpolated_data_2d<types::real_t, V>& modes, W&& writer) {
+void write_modes(const ample::utils::linear_interpolated_data_2d<types::real_t, V>& modes, W&& writer) {
     for (size_t i = 0; i < modes.size(); ++i)
         for (const auto& it : modes[i].data())
             writer(it);
 }
 
 template<typename V, typename W>
-void write_modes(const acstc::utils::linear_interpolated_data_3d<types::real_t, V>& modes, W&& writer) {
+void write_modes(const ample::utils::linear_interpolated_data_3d<types::real_t, V>& modes, W&& writer) {
     for (size_t i = 0; i < modes.size(); ++i)
         for (const auto& field : modes[i].data())
             for (const auto& row : field)
@@ -548,7 +548,7 @@ void write_modes(const acstc::utils::linear_interpolated_data_3d<types::real_t, 
 
 template<typename V, typename W>
 void write_strided(const V& v, const size_t& k, W&& writer) {
-    auto [begin, end] = acstc::utils::stride(v.begin(), v.end(), k);
+    auto [begin, end] = ample::utils::stride(v.begin(), v.end(), k);
     while (begin != end)
         writer(*begin++);
 }
@@ -573,13 +573,13 @@ void save_rays(const std::filesystem::path& filename, const bool binary, const K
     const auto nl = config.nl();
     const auto nm = k_j.size();
 
-    const auto [rx, ry] = acstc::rays::compute(
+    const auto [rx, ry] = ample::rays::compute(
         config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, verbose(2));
 
     if (binary)
-        write_rays(rx, ry, nm, k, acstc::utils::binary_writer<types::real_t>(filename));
+        write_rays(rx, ry, nm, k, ample::utils::binary_writer<types::real_t>(filename));
     else
-        write_rays(rx, ry, nm, k, acstc::utils::text_writer<types::real_t>(filename));
+        write_rays(rx, ry, nm, k, ample::utils::text_writer<types::real_t>(filename));
 }
 
 template<typename V, typename W>
@@ -597,23 +597,23 @@ void write_impulse(const types::vector2d_t<types::real_t>& impulse, W&& writer) 
 void save_impulse(const std::string& filename,
                   const types::vector2d_t<types::real_t>& impulse, const bool& binary) {
     if (binary)
-        write_impulse(impulse, acstc::utils::binary_writer<types::real_t>(filename));
+        write_impulse(impulse, ample::utils::binary_writer<types::real_t>(filename));
     else
-        write_impulse(impulse, acstc::utils::text_writer<types::real_t>(filename));
+        write_impulse(impulse, ample::utils::text_writer<types::real_t>(filename));
 }
 
 template<typename S, typename K, typename V, typename I, typename C>
 void solve(S& solver, const I& init, const K& k0,
-           const acstc::utils::linear_interpolated_data_1d<types::real_t, V>& k_j, 
-           const acstc::utils::linear_interpolated_data_2d<types::real_t>& phi_j,
+           const ample::utils::linear_interpolated_data_1d<types::real_t, V>& k_j,
+           const ample::utils::linear_interpolated_data_2d<types::real_t>& phi_j,
            C&& callback, const size_t& num_workers, const size_t& buff_size) {
     solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
 }
 
 template<typename S, typename K, typename V, typename I, typename C>
 void solve(S& solver, const I& init, const K& k0,
-           const acstc::utils::linear_interpolated_data_2d<types::real_t, V>& k_j, 
-           const acstc::utils::linear_interpolated_data_3d<types::real_t>& phi_j,
+           const ample::utils::linear_interpolated_data_2d<types::real_t, V>& k_j,
+           const ample::utils::linear_interpolated_data_3d<types::real_t>& phi_j,
            C&& callback, const size_t& num_workers, const size_t& buff_size) {
     solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
 }
@@ -673,7 +673,7 @@ public:
 
     void perform() {
         config.update_from_file(config_path.generic_string());
-        acstc::utils::progress_bar::clear_on_end = true;
+        ample::utils::progress_bar::clear_on_end = true;
         std::filesystem::create_directories(output);
 
         field_group group = field_group::nothing;
@@ -707,7 +707,7 @@ public:
         const auto dimz = _dimension(config.z0(), config.z1(), config.nz());
         const auto dimm = _dimensions(_n_modes);
 
-        const auto files = acstc::utils::make_vector(_meta["f"].get<types::vector1d_t<types::real_t>>(), 
+        const auto files = ample::utils::make_vector(_meta["f"].get<types::vector1d_t<types::real_t>>(),
             [this](const auto& value) { return _add_extension(helper.to_string(value)); });
 
         if (jobs.has_job("sel"))
@@ -780,7 +780,7 @@ private:
 
     template<typename V>
     static json _dimensions(const V& values) {
-        return acstc::utils::make_vector(values, [](const auto& value) { return json{ { "n", value } }; });
+        return ample::utils::make_vector(values, [](const auto& value) { return json{ { "n", value } }; });
     }
 
     template<typename V>
@@ -859,9 +859,9 @@ private:
 
     void _pick_writer() {
         if (binary)
-            _pick_const<acstc::utils::binary_writer<types::real_t>>();
+            _pick_const<ample::utils::binary_writer<types::real_t>>();
         else
-            _pick_const<acstc::utils::text_writer<types::real_t>>();
+            _pick_const<ample::utils::text_writer<types::real_t>>();
     }
 
     template<typename W>
@@ -922,8 +922,8 @@ private:
                     }
                 );
 
-                _iy = new types::vector1d_t<types::real_t>(acstc::utils::mesh_1d(config.y0(), config.y1(), config.ny()));
-                _iz = new types::vector1d_t<types::real_t>(acstc::utils::mesh_1d(config.z0(), config.z1(), config.nz()));
+                _iy = new types::vector1d_t<types::real_t>(ample::utils::mesh_1d(config.y0(), config.y1(), config.ny()));
+                _iz = new types::vector1d_t<types::real_t>(ample::utils::mesh_1d(config.z0(), config.z1(), config.nz()));
             }
 
             if (has_sel) {
@@ -942,7 +942,7 @@ private:
             }
 
             const auto [f0, f1] = config.sel_range();
-            acstc::utils::progress_bar pbar(config.frequencies().size(), "Frequency", verbose(2), acstc::utils::progress_bar::on_end::leave);
+            ample::utils::progress_bar pbar(config.frequencies().size(), "Frequency", verbose(2), ample::utils::progress_bar::on_end::leave);
 
             for (const auto& fi : pbar) {
                 config.index(fi);
@@ -1010,7 +1010,7 @@ private:
                     *std::max_element(config.bottom_c2s().begin(), config.bottom_c2s().end())
                 });
 
-                auto omeg = acstc::utils::mesh_1d(0., 1 / config.dt(), _fft->size());
+                auto omeg = ample::utils::mesh_1d(0., 1 / config.dt(), _fft->size());
                 std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
 
                 const auto& receivers = config.receivers();
@@ -1052,18 +1052,18 @@ private:
         types::complex_t _s;
         types::vector1d_t<size_t>* _ix = nullptr;
         types::vector3d_t<types::real_t>* _sel_result = nullptr;
-        acstc::utils::span<const types::complex_t> _source_spectrum;
+        ample::utils::span<const types::complex_t> _source_spectrum;
         types::vector1d_t<types::real_t>* _iy = nullptr, *_iz = nullptr;
-        acstc::utils::real_fft<types::real_t, types::complex_t>* _fft = nullptr;
+        ample::utils::real_fft<types::real_t, types::complex_t>* _fft = nullptr;
         types::vector2d_t<types::complex_t>* _impulse_result = nullptr;
         types::vector3d_t<types::complex_t>* _sel_buffer = nullptr;
 
         void _load_source_spectrum() {
-            acstc::utils::dynamic_assert(!(config.has_source_function() && config.has_source_spectrum()),
+            ample::utils::dynamic_assert(!(config.has_source_function() && config.has_source_spectrum()),
                                          "Only one of source function or spectrum can be provided to compute impulse");
 
             if (config.has_source_function()) {
-                _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_function().size()));
+                _fft = new ample::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_function().size()));
                 std::memcpy(_fft->forward_data(), config.source_function().data(), _fft->size() * sizeof(types::real_t));
                 _fft->execute_forward();
 
@@ -1074,14 +1074,14 @@ private:
                 );
 
                 config.frequencies(
-                    acstc::utils::make_vector_i(_fft->size() / 2 + 1, 
+                    ample::utils::make_vector_i(_fft->size() / 2 + 1,
                         [dt=config.dt(), size=_fft->size() - 1](const size_t& i) {
                             return i / (size * dt);
                         }
                     )
                 );
             } else if (config.has_source_spectrum()) {
-                _fft = new acstc::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_spectrum().size()));
+                _fft = new ample::utils::real_fft<types::real_t, types::complex_t>(static_cast<int>(config.source_spectrum().size()));
                 std::memcpy(_fft->backward_data(), config.source_spectrum().data(), _fft->size() * sizeof(types::complex_t));
             } else
                 throw std::runtime_error("Either source function or spectrum must be provided");
@@ -1146,14 +1146,14 @@ private:
         void _perform_sel(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j) {
             if (_owner.jobs.has_job("sel"))
                 _perform_impulse(init, k0, k_j, phi_j,
-                    acstc::utils::ekc_callback(_owner.step,
+                    ample::utils::ekc_callback(_owner.step,
                         [&sel_buffer=*_sel_buffer, i=0](const auto& x, const auto& data) mutable {
                             sel_buffer[i++] = data;
                         }
                     )
                 );
             else
-                _perform_impulse(init, k0, k_j, phi_j, acstc::utils::nothing_callback());
+                _perform_impulse(init, k0, k_j, phi_j, ample::utils::nothing_callback());
         }
 
         template<typename I, typename K0, typename KJ, typename PJ, typename... C>
@@ -1176,10 +1176,10 @@ private:
                         const auto x = mx + config.x0();
                         for (; !last.empty() && li < ix.size() && receivers[ix[li]].x <= x; ++li) {
                             const auto& [px, py, pz] = receivers[ix[li]];
-                            const auto& [ya, yb] = acstc::utils::find_indices(iy, py);
-                            const auto& [za, zb] = acstc::utils::find_indices(iz, pz);
+                            const auto& [ya, yb] = ample::utils::find_indices(iy, py);
+                            const auto& [za, zb] = ample::utils::find_indices(iz, pz);
 
-                            auto& r = result[ix[li]][fi] = acstc::utils::_impl::linear_interpolation::area_point(
+                            auto& r = result[ix[li]][fi] = ample::utils::_impl::linear_interpolation::area_point(
                                     last[ya][za], data[ya][za], last[ya][zb], data[ya][zb],
                                     last[yb][za], data[yb][za], last[yb][zb], data[yb][zb],
                                     last_x, x, iy[ya], iy[yb], iz[za], iz[zb], px, py, pz);
@@ -1203,7 +1203,7 @@ private:
             if (_owner.jobs.has_job("solution")) {
                 W writer(_owner._get_filename("solution"));
                 _perform_solve(init, k0, k_j, phi_j, std::forward<C>(callbacks)...,
-                    acstc::utils::ekc_callback(_owner.step,
+                    ample::utils::ekc_callback(_owner.step,
                         [&writer](const auto& x, const auto& data) mutable {
                             for (const auto& it : data)
                                 writer.write(reinterpret_cast<const types::real_t*>(it.data()), it.size() * 2);
@@ -1220,10 +1220,10 @@ private:
             if (!_owner.jobs.has_job("solution") && !_owner.jobs.has_job("impulse"))
                 return;
 
-            acstc::solver solver(config);
+            ample::solver solver(config);
 
-            auto callback = acstc::utils::callbacks(
-                acstc::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)),
+            auto callback = ample::utils::callbacks(
+                ample::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)),
                 std::forward<C>(callbacks)...
             );
 
@@ -1266,7 +1266,7 @@ int main(int argc, const char* argv[]) {
         po::options_description generic("Generic options");
         generic.add_options()
             ("help,h", "Print this message")
-            ("verbosity,v", po::value(&acstc::utils::verbosity::instance().level)->default_value(0), "Verbosity level")
+            ("verbosity,v", po::value(&ample::utils::verbosity::instance().level)->default_value(0), "Verbosity level")
             ("config,c", po::value(&jobs_config.config_path)->default_value("config.json"), "Config filename");
 
         po::options_description output("Output options");
@@ -1295,7 +1295,7 @@ int main(int argc, const char* argv[]) {
         if (vm.count("help")) {
             po::options_description desc;
             desc.add(generic).add(output).add(computation);
-            std::cout << "Usage: [ [" << acstc::utils::join_it(available_jobs.begin(), available_jobs.end(), "|") <<
+            std::cout << "Usage: [ [" << ample::utils::join_it(available_jobs.begin(), available_jobs.end(), "|") <<
                 "], ... ] (=solution) [options]\n" << desc << std::endl;
             return 0;
         }

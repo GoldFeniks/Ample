@@ -10,7 +10,7 @@
 #include "nlohmann/json.hpp"
 
 template<typename T>
-std::istream& operator>>(std::istream& stream, acstc::types::point<T>& point) {
+std::istream& operator>>(std::istream& stream, ample::types::point<T>& point) {
     stream >> point.x >> point.y >> point.z;
     return stream;
 }
@@ -42,7 +42,7 @@ namespace nlohmann {
                 const auto string = data.get<std::string>();
                 std::regex regex(raw_regex, std::regex_constants::ECMAScript);
 
-                acstc::utils::dynamic_assert(std::regex_match(string, match, regex),"Couldn't match as complex value: ", string);
+                ample::utils::dynamic_assert(std::regex_match(string, match, regex), "Couldn't match as complex value: ", string);
 
                 const auto real = match[1].str();
                 const auto imag = match[2].str();
@@ -55,7 +55,7 @@ namespace nlohmann {
             }
 
             if (data.is_array()) {
-                acstc::utils::dynamic_assert(data.size() == 2, "Exactly two numbers must be provided for complex values");
+                ample::utils::dynamic_assert(data.size() == 2, "Exactly two numbers must be provided for complex values");
                 value = std::complex<T>(data[0].template get<T>(), data[1].template get<T>());
                 return;
             }
@@ -65,17 +65,17 @@ namespace nlohmann {
                 return;
             }
 
-            throw std::runtime_error(acstc::utils::join("Cannot parse complex value from ", data));
+            throw std::runtime_error(ample::utils::join("Cannot parse complex value from ", data));
         }
 
     };
 
     template<typename T>
-    struct adl_serializer<acstc::types::point<T>> {
+    struct adl_serializer<ample::types::point<T>> {
 
-        static void from_json(const nlohmann::json& data, acstc::types::point<T>& value) {
+        static void from_json(const nlohmann::json& data, ample::types::point<T>& value) {
             if (data.is_object()) {
-                acstc::utils::dynamic_assert(
+                ample::utils::dynamic_assert(
                     data.contains("x") && data.contains("y") && data.contains("z") && data.size() == 3 && data["x"].is_number() && data["y"].is_number() && data["z"].is_number(),
                     "Couldn't parse point value, expected an object in format { \"x\": <number>, \"y\": <number>, \"z\": <number> }, but got ", data
                 );
@@ -84,15 +84,15 @@ namespace nlohmann {
             }
 
             if (data.is_array()) {
-                acstc::utils::dynamic_assert(data.size() == 3, "Expected 3 values, but got ", data.size());
+                ample::utils::dynamic_assert(data.size() == 3, "Expected 3 values, but got ", data.size());
                 value = { data[0].template get<T>(), data[1].template get<T>(), data[2].template get<T>() };
                 return;
             }
 
-            throw std::runtime_error(acstc::utils::join("Cannot parse point value from ", data));
+            throw std::runtime_error(ample::utils::join("Cannot parse point value from ", data));
         }
 
-        static void to_json(nlohmann::json& json, const acstc::types::point<T>& value) {
+        static void to_json(nlohmann::json& json, const ample::types::point<T>& value) {
             json = { { "x", value.x }, { "y", value.y }, { "z", value.z } };
         }
 

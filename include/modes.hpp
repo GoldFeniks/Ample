@@ -7,12 +7,11 @@
 #include "normal_modes.h"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
+#include "utils/assert.hpp"
 #include "utils/callback.hpp"
 #include "utils/interpolation.hpp"
 
-namespace acstc {
-
-    using namespace std::placeholders;
+namespace ample {
 
     template<typename T>
     class config;
@@ -449,4 +448,4 @@ namespace acstc {
 
     };
 
-}// namespace acstc
+}// namespace ample

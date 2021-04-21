@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(ACOUSTIC)
+project(AMPLE)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -37,7 +37,7 @@ include_directories(
     ${Boost_INCLUDE_DIR}
 )
 
-add_executable(ACOUSTIC
+add_executable(AMPLE
         ${PROJECT_DIR}/build/main.cpp
         ${PROJECT_DIR}/include/config.hpp
         ${PROJECT_DIR}/include/initial_conditions.hpp
@@ -57,13 +57,15 @@ add_executable(ACOUSTIC
         ${PROJECT_DIR}/include/utils/verbosity.hpp
         ${PROJECT_DIR}/include/utils/multi_optional.hpp
         ${PROJECT_DIR}/include/utils/join.hpp
+        ${PROJECT_DIR}/include/utils/assert.hpp
+        ${PROJECT_DIR}/include/utils/dimensions.hpp
 )
 
 if(WIN32 AND USE_VCPKG)
-    set_target_properties(ACOUSTIC PROPERTIES VS_GLOBAL_VcpkgEnabled true)
+    set_target_properties(AMPLE PROPERTIES VS_GLOBAL_VcpkgEnabled true)
 endif()
 
-target_link_libraries(ACOUSTIC 
+target_link_libraries(AMPLE
     Threads::Threads
     nlohmann_json::nlohmann_json
     ${Boost_LIBRARIES} 

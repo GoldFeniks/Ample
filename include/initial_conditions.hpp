@@ -12,7 +12,7 @@
 #include "utils/utils.hpp"
 #include "utils/interpolation.hpp"
 
-namespace acstc {
+namespace ample {
 
     namespace _impl {
 
@@ -378,4 +378,4 @@ namespace acstc {
         return result;
     }
 
-}// namespace acstc
+}// namespace ample

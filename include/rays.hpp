@@ -9,7 +9,7 @@
 #include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
 
-namespace acstc::rays {
+namespace ample::rays {
 
     namespace _impl {
 
@@ -42,7 +42,7 @@ namespace acstc::rays {
         }
 
         template<typename T, typename V>
-        auto calc_derivative_x(const acstc::utils::linear_interpolated_data_2d<T, V>& values) {
+        auto calc_derivative_x(const utils::linear_interpolated_data_2d<T, V>& values) {
             const auto& x = values.template get<0>();
             const auto& y = values.template get<1>();
             types::vector3d_t<V> resx(values.size());
@@ -65,7 +65,7 @@ namespace acstc::rays {
         }
 
         template<typename T, typename V>
-        auto calc_derivatives(const acstc::utils::linear_interpolated_data_2d<T, V>& values) {
+        auto calc_derivatives(const utils::linear_interpolated_data_2d<T, V>& values) {
             const auto& x = values.template get<0>();
             const auto& y = values.template get<1>();
             types::vector3d_t<V> resx(values.size()), resy(values.size());
@@ -238,4 +238,4 @@ namespace acstc::rays {
         }
     }
 
-}// namespace acstc::rays
+}// namespace ample::rays

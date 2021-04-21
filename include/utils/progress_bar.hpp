@@ -14,7 +14,7 @@
 #include <sys/ioctl.h>
 #endif
 
-namespace acstc::utils {
+namespace ample::utils {
 
     class progress_bar {
 
@@ -232,4 +232,4 @@ namespace acstc::utils {
 
     };
 
-}// namespace acstc::utils
+}// namespace ample::utils

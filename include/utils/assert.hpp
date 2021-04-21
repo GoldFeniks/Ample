@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include "join.hpp"
 
-namespace acstc::utils {
+namespace ample::utils {
 
     template<typename E>
     struct set_exception {
@@ -25,4 +25,4 @@ namespace acstc::utils {
         dynamic_assert(condition, "Dynamic assertion failed");
     }
 
-}// namespace acstc
+}// namespace ample

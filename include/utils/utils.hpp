@@ -10,7 +10,7 @@
 #include <type_traits>
 #include "types.hpp"
 
-namespace acstc::utils {
+namespace ample::utils {
 
     namespace _impl {
 
@@ -350,4 +350,4 @@ namespace acstc::utils {
 
     };
 
-}// namespace acstc::utils
+}// namespace ample::utils

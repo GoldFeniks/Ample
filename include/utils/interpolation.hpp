@@ -11,7 +11,7 @@
 #include "delaunay.hpp"
 #include "feniks/zip.hpp"
 
-namespace acstc::utils {
+namespace ample::utils {
 
     namespace _impl {
 
@@ -1084,4 +1084,4 @@ namespace acstc::utils {
     template<typename T, typename V = T>
     using nearest_neighbour_interpolated_data_2d = interpolated_data<interpolators::nearest_neighbour_interpolator_2d<T, V>>;
 
-}// namespace acstc::utils
+}// namespace ample::utils
