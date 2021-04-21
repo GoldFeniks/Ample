@@ -142,11 +142,11 @@ namespace acstc {
 
         auto vector_line(const T& x, const size_t& ny, const size_t& c = -1) {
             const auto [y0, y1] = _config.y_bounds();
-            return line(x, y0, y1, ny, c);
+            return vector_line(x, y0, y1, ny, c);
         }
 
         auto vector_line(const T& x, const size_t& c = -1) {
-            return line(x, _config.mny(), c);
+            return vector_line(x, _config.mny(), c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
@@ -350,7 +350,7 @@ namespace acstc {
         NormalModes _n_m;
         const config<T>& _config;
 
-        static constexpr T eps = 1e-5;
+        static constexpr T eps = 1e-3;
 
         static void _check_z(const types::vector1d_t<T>& z) {
             utils::dynamic_assert(std::all_of(z.begin(), z.end(), [](const auto& v) { return v >= -eps; }),
