@@ -3,19 +3,28 @@
     "y0": -4000,
     "y1": 4000,
     "ny": 8001,
-    "x1": 15000,
-    "nx": 15001,
+    "x0": 50,
+    "x1": 10000,
+    "nx": 10001,
     "z0": 30,
     "z1": 30,
     "nz": 1,
     "mny": 2,
-    "z_s": 30,
-    "init": "greene",
+    "z_s": 100,
+    "init": "ray_simple",
+    "a0": -1.57,
+    "a1":  1.57,
+    "coefficients": {
+        "type": "ssp",
+        "parameters": {
+            "n": 17
+        }
+    },
     "input_data": [
         {
             "type": "frequencies",
-            "dimensions": [ 2 ],
-            "values": [ 25, 125 ]
+            "dimensions": [ 1 ],
+            "values": [ 25 ]
         },
         {
             "type": "bathymetry",
