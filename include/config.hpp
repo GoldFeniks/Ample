@@ -458,7 +458,7 @@ namespace ample {
         }
 
         template<typename V = T>
-        auto create_modes(const size_t& c = 0, const bool show_progress = false) const {
+        auto create_modes(const size_t& num_workers = 1, const size_t& c = 0, const bool show_progress = false) const {
             if (_k_j.template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>() &&
                 _phi_j.has_value()) {
                 const auto& k_j = std::get<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>(_k_j)[_index];
@@ -474,11 +474,11 @@ namespace ample {
             const auto yn = mny();
 
             modes<T, V> modes(*this, utils::mesh_1d(z0(), z1(), mnz()));
-            return modes.interpolated_field(xn, yn, utils::progress_bar_callback(xn * yn, "Modes", show_progress), c);
+            return modes.interpolated_field(xn, yn, utils::progress_bar_callback(xn * yn, "Modes", show_progress), num_workers, c);
         }
 
         template<typename V = T>
-        auto create_const_modes(const size_t& c = 0, const bool show_progress = false) const {
+        auto create_const_modes(const size_t& num_workers = 1, const size_t& c = 0, const bool show_progress = false) const {
             if (_k_j.template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>() &&
                 _phi_j.has_value()) {
                 const auto& k_j = std::get<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>(_k_j)[_index];
@@ -504,15 +504,15 @@ namespace ample {
                 );
             }
 
-            return create_const_modes<V>(utils::mesh_1d(z0(), z1(), mnz()), c, show_progress);
+            return create_const_modes<V>(utils::mesh_1d(z0(), z1(), mnz()), num_workers, c, show_progress);
         }
 
         template<typename V = T>
-        auto create_const_modes(const types::vector1d_t<T>& z, const size_t& c = 0, const bool show_progress = false) const {
+        auto create_const_modes(const types::vector1d_t<T>& z, const size_t& num_workers = 1, const size_t& c = 0, const bool show_progress = false) const {
             const auto yn = mny();
 
             modes<T, V> modes(*this, z);
-            return modes.interpolated_line(x0(), yn, utils::progress_bar_callback(yn, "Modes", show_progress), c);
+            return modes.interpolated_line(x0(), yn, utils::progress_bar_callback(yn, "Modes", show_progress), num_workers, c);
         }
 
         template<typename V = T>

@@ -870,11 +870,11 @@ private:
     template<bool Const, typename T>
     struct make_modes {
 
-        static auto make(const size_t& nm, const bool& show_progress) {
+        static auto make(const size_t& nw, const size_t& nm, const bool& show_progress) {
             if constexpr (Const)
-                return config.create_const_modes<T>(nm, show_progress);
+                return config.create_const_modes<T>(nw, nm, show_progress);
             else
-                return config.create_modes<T>(nm, show_progress);
+                return config.create_modes<T>(nw, nm, show_progress);
         }
 
         static auto make_source() {
@@ -1107,7 +1107,7 @@ private:
             _owner._n_modes.push_back(nm);
 
             const auto start = std::chrono::system_clock::now();
-            auto [k_j, phi_j] = M::make(nm, verbose(2));
+            auto [k_j, phi_j] = M::make(_owner.num_workers, nm, verbose(2));
             const auto end = std::chrono::system_clock::now();
             verboseln_lv(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
 

@@ -1,5 +1,7 @@
 #pragma once
 #include <tuple>
+#include <mutex>
+#include <thread>
 #include <cstddef>
 #include <istream>
 #include <algorithm>
@@ -113,35 +115,39 @@ namespace ample {
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        void line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& c = -1) {
+        void line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto hy = (y1 - y0) / (ny - 1);
             const auto depth = _config.bathymetry().line(x, y0, y1, ny);
 
-            auto y = y0;
-            for (size_t i = 0; i < ny; ++i, y += hy) {
-                _point(x, y, depth[i], c);
-                callback(std::as_const(_n_m), std::as_const(i));
-            }
+            _compute(ny, num_workers, [&](const size_t i0, const size_t i1, NormalModes n_m) {
+                    auto y = y0 + hy * i0;
+                    for (size_t i = i0; i < i1; ++i, y += hy) {
+                        _point(n_m, x, y, depth[i], c);
+                        callback(std::as_const(n_m), std::as_const(i));
+                    }
+                }
+            );
+
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        void line(const T& x, const size_t& ny, C&& callback, const size_t& c = -1) {
+        void line(const T& x, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [y0, y1] = _config.y_bounds();
-            return line(x, y0, y1, ny, callback, c);
+            return line(x, y0, y1, ny, callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        void line(const T& x, C&& callback, const size_t& c = -1) {
-            return line(x, _config.mny(), callback, c);
+        void line(const T& x, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
+            return line(x, _config.mny(), callback, num_workers, c);
         }
 
-        auto vector_line(const T& x, const T& y0, const T& y1, const size_t& ny, const size_t& c = -1) {
-            return vector_line(x, y0, y1, ny, utils::nothing_callback(), c);
+        auto vector_line(const T& x, const T& y0, const T& y1, const size_t& ny, const size_t& num_workers = 1, const size_t& c = -1) {
+            return vector_line(x, y0, y1, ny, utils::nothing_callback(), num_workers, c);
         }
 
-        auto vector_line(const T& x, const size_t& ny, const size_t& c = -1) {
+        auto vector_line(const T& x, const size_t& ny, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [y0, y1] = _config.y_bounds();
-            return vector_line(x, y0, y1, ny, c);
+            return vector_line(x, y0, y1, ny, num_workers, c);
         }
 
         auto vector_line(const T& x, const size_t& c = -1) {
@@ -149,51 +155,53 @@ namespace ample {
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        auto vector_line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& c = -1) {
+        auto vector_line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             size_t m = 0;
             types::vector2d_t<V> k_j;
             types::vector3d_t<T> phi_j;
 
+            std::mutex mutex;
             line(x, y0, y1, ny, 
                 utils::callbacks(
                     callback,
                     [&, mm=_config.max_mode()](const NormalModes& n_m, const size_t& i) mutable {
+                        std::lock_guard<std::mutex> lock(mutex);
                         _fill_data(n_m, k_j, phi_j, ny, i, mm, m);
                     }
-                ), c
+                ), num_workers, c
             );
 
             return std::make_tuple(std::move(k_j), std::move(phi_j));
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        auto vector_line(const T& x, const size_t& ny, C&& callback, const size_t& c = -1) {
+        auto vector_line(const T& x, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [y0, y1] = _config.y_bounds();
-            return vector_line(x, y0, y1, ny, callback, c);
+            return vector_line(x, y0, y1, ny, callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        auto vector_line(const T& x, C&& callback, const size_t& c = -1) {
-            return vector_line(x, callback, c);
+        auto vector_line(const T& x, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
+            return vector_line(x, callback, num_workers, c);
         }
 
-        auto interpolated_line(const T& x, const T& y0, const T& y1, const size_t& ny, const size_t& c = -1) {
-            return interpolated_line(x, y0, y1, ny, utils::nothing_callback(), c);
+        auto interpolated_line(const T& x, const T& y0, const T& y1, const size_t& ny, const size_t& num_workers = 1, const size_t& c = -1) {
+            return interpolated_line(x, y0, y1, ny, utils::nothing_callback(), num_workers, c);
         }
 
-        auto interpolated_line(const T& x, const size_t& ny, const size_t& c = -1) {
+        auto interpolated_line(const T& x, const size_t& ny, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [y0, y1] = _config.y_bounds();
-            return interpolated_line(x, y0, y1, ny, c);
+            return interpolated_line(x, y0, y1, ny, num_workers, c);
         }
 
-        auto interpolated_line(const T& x, const size_t& c = -1) {
-            return interpolated_line(x, _config.mny(), c);
+        auto interpolated_line(const T& x, const size_t& num_workers = 1, const size_t& c = -1) {
+            return interpolated_line(x, _config.mny(), num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        auto interpolated_line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& c = -1) {
+        auto interpolated_line(const T& x, const T& y0, const T& y1, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto y = utils::mesh_1d(y0, y1, ny);
-            auto [k_j, phi_j] = vector_line(x, y0, y1, ny, callback, c);
+            auto [k_j, phi_j] = vector_line(x, y0, y1, ny, callback, num_workers, c);
 
             return std::make_tuple(
                 utils::linear_interpolated_data_1d<T, V>(y, std::move(k_j)),
@@ -202,124 +210,131 @@ namespace ample {
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        auto interpolated_line(const T& x, const size_t& ny, C&& callback, const size_t& c = -1) {
+        auto interpolated_line(const T& x, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [y0, y1] = _config.y_bounds();
-            return interpolated_line(x, y0, y1, ny, callback, c);
+            return interpolated_line(x, y0, y1, ny, callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
-        auto interpolated_line(const T& x, C&& callback, const size_t& c = -1) {
-            return interpolated_line(x, _config.mny(), callback, c);
+        auto interpolated_line(const T& x, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
+            return interpolated_line(x, _config.mny(), callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
         void field(
             const T& x0, const T& x1, const size_t& nx,
             const T& y0, const T& y1, const size_t& ny,
-            C&& callback, const size_t& c = -1) {
+            C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto hx = (x1 - x0) / (nx - 1);
             const auto hy = (y1 - y0) / (ny - 1);
             const auto depth = _config.bathymetry().field(x0, x1, nx, y0, y1, ny);
 
-            auto x = x0;
-            for (size_t i = 0; i < nx; ++i, x += hx) {
-                auto y = y0;
-                for (size_t j = 0; j < ny; ++j, y += hy) {
-                    _point(x, y, depth[i][j], c);
-                    callback(std::as_const(_n_m), std::as_const(i), std::as_const(j));
+            _compute(ny, num_workers, [&](const size_t j0, const size_t j1, NormalModes n_m) {
+                    auto x = x0;
+                    for (size_t i = 0; i < nx; ++i, x += hx) {
+                        auto y = y0 + j0 * hy;
+                        for (size_t j = j0; j < j1; ++j, y += hy) {
+                            _point(n_m, x, y, depth[i][j], c);
+                            callback(std::as_const(n_m), std::as_const(i), std::as_const(j));
+                        }
+                    }
                 }
-            }
+            );
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
-        void field(const size_t& nx, const size_t& ny, C&& callback, const size_t& c = -1) {
+        void field(const size_t& nx, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [x0, x1] = _config.x_bounds();
             const auto [y0, y1] = _config.y_bounds();
-            return field(x0, x1, nx, y0, y1, ny, callback, c);
+            return field(x0, x1, nx, y0, y1, ny, callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
-        void field(C&& callback, const size_t& c = -1) {
-            return field(_config.mnx(), _config.mny(), callback, c);
+        void field(C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
+            return field(_config.mnx(), _config.mny(), callback, num_workers, c);
         }
 
         auto vector_field(
             const T& x0, const T& x1, const size_t& nx,
             const T& y0, const T& y1, const size_t& ny,
-            const size_t& c = -1) {
-            return vector_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), c);
+            const size_t& num_workers = 1, const size_t& c = -1) {
+            return vector_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), num_workers, c);
         }
 
-        auto vector_field(const size_t& nx, const size_t& ny, const size_t& c = -1) {
+        auto vector_field(const size_t& nx, const size_t& ny, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [x0, x1] = _config.x_bounds();
             const auto [y0, y1] = _config.y_bounds();
-            return vector_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), c);
+            return vector_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), num_workers, c);
         }
 
-        auto vector_field(const size_t& c = -1) {
-            return vector_field(_config.mnx(), _config.mny(), utils::nothing_callback(), c);
+        auto vector_field(const size_t& num_workers = 1, const size_t& c = -1) {
+            return vector_field(_config.mnx(), _config.mny(), utils::nothing_callback(), num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
         auto vector_field(
             const T& x0, const T& x1, const size_t& nx,
             const T& y0, const T& y1, const size_t& ny,
-            C&& callback, const size_t& c = -1) {
+            C&& callback, const size_t& num_workers = 1, const size_t& c = -1, const bool& smooth = false) {
             types::vector3d_t<V> k_j;
             types::vector4d_t<T> phi_j;
+
+            std::mutex mutex;
 
             field(x0, x1, nx, y0, y1, ny,
                 utils::callbacks(
                     callback,
                     [&, m=size_t(0), mm=_config.max_mode()](const NormalModes& n_m, const size_t& i, const size_t& j) mutable {
+                        std::lock_guard<std::mutex> lock(mutex);
                         m = j ? m : 0;
                         _fill_data(n_m, k_j, phi_j, nx, ny, i, j, mm, m);
                     }
-                ), c
+                ), num_workers, c
             );
 
-            _smooth((y1 - y0) / (ny - 1), _config.border_width(), k_j, phi_j);
+            if (smooth)
+                _smooth((y1 - y0) / (ny - 1), _config.border_width(), k_j, phi_j);
 
             return std::make_tuple(std::move(k_j), std::move(phi_j));
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
-        auto vector_field(const size_t& nx, const size_t& ny, C&& callback, const size_t& c = -1) {
+        auto vector_field(const size_t& nx, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [x0, x1] = _config.x_bounds();
             const auto [y0, y1] = _config.y_bounds();
-            return vector_field(x0, x1, nx, y0, y1, ny, callback, c);
+            return vector_field(x0, x1, nx, y0, y1, ny, callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
-        auto vector_field(C&& callback, const size_t& c = -1) {
-            return vector_field(_config.mnx(), _config.mny(), callback, c);
+        auto vector_field(C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
+            return vector_field(_config.mnx(), _config.mny(), callback, num_workers, c);
         }
 
         auto interpolated_field(
             const T& x0, const T& x1, const size_t& nx,
             const T& y0, const T& y1, const size_t& ny,
-            const size_t& c = -1) {
-            return interpolated_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), c);
+            const size_t& num_workers = 1, const size_t& c = -1) {
+            return interpolated_field(x0, x1, nx, y0, y1, ny, utils::nothing_callback(), num_workers, c);
         }
 
-        auto interpolated_field(const size_t& nx, const size_t& ny, const size_t& c = -1) {
+        auto interpolated_field(const size_t& nx, const size_t& ny, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [x0, x1] = _config.x_bounds();
             const auto [y0, y1] = _config.y_bounds();
-            return interpolated_field(x0, x1, nx, y0, y1, ny, c);
+            return interpolated_field(x0, x1, nx, y0, y1, ny, num_workers, c);
         }
 
-        auto interpolated_field(const size_t& c = -1) {
-            return interpolated_field(_config.mnx(), _config.mny(), c);
+        auto interpolated_field(const size_t& num_workers = 1, const size_t& c = -1) {
+            return interpolated_field(_config.mnx(), _config.mny(), num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
         auto interpolated_field(
             const T& x0, const T& x1, const size_t& nx,
             const T& y0, const T& y1, const size_t& ny,
-            C&& callback, const size_t& c = -1) {
+            C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto x = utils::mesh_1d(x0, x1, nx);
             const auto y = utils::mesh_1d(y0, y1, ny);
-            auto [k_j, phi_j] = vector_field(x0, x1, nx, y0, y1, ny, callback, c);
+            auto [k_j, phi_j] = vector_field(x0, x1, nx, y0, y1, ny, callback, num_workers, c);
 
             return std::make_tuple(
                 utils::linear_interpolated_data_2d<T, V>(x, y, std::move(k_j)),
@@ -328,15 +343,15 @@ namespace ample {
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
-        auto interpolated_field(const size_t& nx, const size_t& ny, C&& callback, const size_t& c = -1) {
+        auto interpolated_field(const size_t& nx, const size_t& ny, C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
             const auto [x0, x1] = _config.x_bounds();
             const auto [y0, y1] = _config.y_bounds();
-            return interpolated_field(x0, x1, nx, y0, y1, ny, callback, c);
+            return interpolated_field(x0, x1, nx, y0, y1, ny, callback, num_workers, c);
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
-        auto interpolated_field(C&& callback, const size_t& c = -1) {
-            return interpolated_field(_config.mnx(), _config.mny(), callback, c);
+        auto interpolated_field(C&& callback, const size_t& num_workers = 1, const size_t& c = -1) {
+            return interpolated_field(_config.mnx(), _config.mny(), callback, num_workers, c);
         }
 
         void set_z(const types::vector1d_t<T>& z) {
@@ -349,7 +364,30 @@ namespace ample {
         NormalModes _n_m;
         const config<T>& _config;
 
-        static constexpr T eps = 1e-3;
+        static constexpr T eps = 1;
+
+        template<typename C>
+        void _compute(const size_t& n, size_t num_workers, C&& callback) {
+            num_workers = std::min(num_workers, n);
+
+            if (num_workers <= 1) {
+                callback(0, n, _n_m);
+                return;
+            }
+
+            types::vector1d_t<std::thread> workers;
+            workers.reserve(num_workers);
+
+            const auto m = n / num_workers;
+
+            for (size_t i = 0; i < num_workers; ++i)
+                workers.emplace_back(
+                        [&callback](const size_t& i, const size_t& j, NormalModes n_m) { callback(i, j, std::move(n_m)); },
+                        m * i, i == num_workers - 1 ? n : m * (i + 1), _n_m);
+
+            for (auto& it : workers)
+                it.join();
+        }
 
         static void _check_z(const types::vector1d_t<T>& z) {
             utils::dynamic_assert(std::all_of(z.begin(), z.end(), [](const auto& v) { return v >= -eps; }),
@@ -377,37 +415,41 @@ namespace ample {
             }
         }
 
-        void _point(const T& x, const T& y, const T& depth, const size_t& c = -1) {
-            utils::dynamic_assert(_n_m.zr.size() > 0, "There must be at least one depth value");
+        void _point(NormalModes& n_m, const T& x, const T& y, const T& depth, const size_t& c = -1) {
+            utils::dynamic_assert(!n_m.zr.empty(), "There must be at least one depth value");
 
             if (depth <= eps) {
-                _n_m.khs.clear();
-                _n_m.mfunctions_zr.clear();
+                n_m.khs.clear();
+                n_m.mfunctions_zr.clear();
                 return;
             }
 
-            _n_m.nmod = static_cast<int>(c == -1 ? _config.n_modes() : c);
-            _n_m.alpha = M_PI / 180 * (_n_m.nmod > 0);
+            n_m.nmod = static_cast<int>(c == -1 ? _config.n_modes() : c);
+            n_m.alpha = M_PI / 180 * (n_m.nmod > 0);
 
             auto buff = utils::mesh_1d(T(0), depth, _config.n_layers() + 1);
-            std::copy(buff.begin() + 1, buff.end(), _n_m.M_depths.begin());
+            std::copy(buff.begin() + 1, buff.end(), n_m.M_depths.begin());
 
             if (_config.additive_depth())
-                std::transform(_config.bottom_layers().begin(), _config.bottom_layers().end(), 
-                    _n_m.M_depths.begin() + _config.n_layers(), [&depth](const auto& z) { return z + depth; });
+                std::transform(_config.bottom_layers().begin(), _config.bottom_layers().end(),
+                               n_m.M_depths.begin() + _config.n_layers(), [&depth](const auto& z) { return z + depth; });
 
             _config.hydrology().line(x, T(0), depth, buff);
-            std::copy(buff.begin(), buff.end() - 1, _n_m.M_c1s.begin());
-            std::copy(buff.begin() + 1, buff.end(), _n_m.M_c2s.begin());
+            std::copy(buff.begin(), buff.end() - 1, n_m.M_c1s.begin());
+            std::copy(buff.begin() + 1, buff.end(), n_m.M_c2s.begin());
 
-            _n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(_n_m.ppm * _n_m.M_depths[0]));
-            for (size_t i = 1; i < _n_m.M_depths.size(); ++i)
-                _n_m.M_Ns_points[i] = static_cast<unsigned>(std::round(_n_m.ppm * (_n_m.M_depths[i] - _n_m.M_depths[i - 1])));
+            n_m.M_Ns_points[0] = static_cast<unsigned>(std::round(n_m.ppm * n_m.M_depths[0]));
+            for (size_t i = 1; i < n_m.M_depths.size(); ++i)
+                n_m.M_Ns_points[i] = static_cast<unsigned>(std::round(n_m.ppm * (n_m.M_depths[i] - n_m.M_depths[i - 1])));
 
-            _n_m.compute_khs();
-            _n_m.compute_mfunctions_zr();
+            n_m.compute_khs();
+            n_m.compute_mfunctions_zr();
             if constexpr (Complex)
-                _n_m.compute_mattenuation();
+                n_m.compute_mattenuation();
+        }
+
+        void _point(const T& x, const T& y, const T& depth, const size_t& c = -1) {
+            _point(_n_m, x, y, depth, c);
         }
 
         void _point(const T& x, const T& y, const size_t& c = -1) {
