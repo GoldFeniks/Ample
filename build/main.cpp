@@ -493,7 +493,7 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
     KS ws(k0.size());
     PS as(phi_s.size());
     std::transform(phi_s.begin(), phi_s.end(), as.begin(), [](const auto& phi) { return phi / (2 * std::sqrt(M_PI)); });
-    std::transform(k0.begin(), k0.end(), ws.begin(), [](const auto& k0) { return 1 / std::pow(k0, 2); } );
+    std::transform(k0.begin(), k0.end(), ws.begin(), [](const auto& k0) { return 1. / std::pow(k0, 2); } );
 
     if (init == "greene")
         return ample::greene_source<types::complex_t>(config.y0(), config.y1(), config.ny(), config.y_s(), as, ws);
@@ -555,43 +555,31 @@ void write_modes(const ample::utils::linear_interpolated_data_3d<types::real_t, 
 template<typename V, typename W>
 void write_strided(const V& v, const size_t& k, W&& writer) {
     auto [begin, end] = ample::utils::stride(v.begin(), v.end(), k);
-    while (begin != end)
-        writer(*begin++);
+    writer(begin, end);
 }
 
 template<typename RX, typename RY, typename W>
-void write_rays(const RX& rx, const RY& ry, const size_t& n, const size_t& k, W&& writer) {
-    for (size_t i = 0; i < n; ++i)
+void write_rays(const RX& rx, const RY& ry, const size_t& n, const size_t& kr, const size_t& kc, W&& writer) {
+    for (size_t i = 0; i < n; i += kr)
         for (const auto& [x, y] : feniks::zip(rx[i].data(), ry[i].data())) {
             writer.before_write();
-            write_strided(feniks::zip(x, y), k, 
-                [&writer](const auto& value) mutable {
-                    writer.write_one(std::get<0>(value));
-                    writer.write_one(std::get<1>(value));
+            write_strided(feniks::zip(x, y), kc,
+                [&writer](auto begin, const auto& end) mutable {
+                    while (begin != end) {
+                        const auto& [a, b] = *begin;
+                        writer.write_one(a);
+                        writer.write_one(b);
+                        ++begin;
+                    }
                 });
             writer.after_write();
         }
 }
 
-template<typename KJ>
-void save_rays(const std::filesystem::path& filename, const bool binary, const KJ& k_j, const size_t& k) {
-    const auto na = config.na();
-    const auto nl = config.nl();
-    const auto nm = k_j.size();
-
-    const auto [rx, ry] = ample::rays::compute(
-        config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, verbose(2));
-
-    if (binary)
-        write_rays(rx, ry, nm, k, ample::utils::binary_writer<types::real_t>(filename));
-    else
-        write_rays(rx, ry, nm, k, ample::utils::text_writer<types::real_t>(filename));
-}
-
 template<typename V, typename W>
-void write_conditions(const V& values, W&& writer) {
+void write_conditions(const V& values, const size_t& k, W&& writer) {
     for (const auto& it : values)
-        writer.write(reinterpret_cast<const types::real_t*>(it.data()), 2 * it.size());
+        write_strided(it, k, writer);
 }
 
 template<typename W>
@@ -600,20 +588,12 @@ void write_impulse(const types::vector2d_t<types::real_t>& impulse, W&& writer) 
         writer.write(it);
 }
 
-void save_impulse(const std::string& filename,
-                  const types::vector2d_t<types::real_t>& impulse, const bool& binary) {
-    if (binary)
-        write_impulse(impulse, ample::utils::binary_writer<types::real_t>(filename));
-    else
-        write_impulse(impulse, ample::utils::text_writer<types::real_t>(filename));
-}
-
 template<typename S, typename K, typename V, typename I, typename C>
 void solve(S& solver, const I& init, const K& k0,
            const ample::utils::linear_interpolated_data_1d<types::real_t, V>& k_j,
            const ample::utils::linear_interpolated_data_2d<types::real_t>& phi_j,
            C&& callback, const size_t& num_workers, const size_t& buff_size) {
-    solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+    solver.solve(init, k0, k_j, phi_j, callback, num_workers, buff_size);
 }
 
 template<typename S, typename K, typename V, typename I, typename C>
@@ -621,7 +601,7 @@ void solve(S& solver, const I& init, const K& k0,
            const ample::utils::linear_interpolated_data_2d<types::real_t, V>& k_j,
            const ample::utils::linear_interpolated_data_3d<types::real_t>& phi_j,
            C&& callback, const size_t& num_workers, const size_t& buff_size) {
-    solver.solve(init, k0, k_j, phi_j, callback, config.past_n(), num_workers, buff_size);
+    solver.solve(init, k0, k_j, phi_j, callback, num_workers, buff_size);
 }
 
 const std::set<std::string> available_jobs {
@@ -670,7 +650,7 @@ public:
 
     ::jobs jobs;
     bool binary;
-    size_t step, num_workers, buff_size;
+    size_t row_step, col_step, num_workers, buff_size;
     std::filesystem::path output, config_path;
 
     void command_line_arguments(const int argc, const char* argv[]) {
@@ -708,8 +688,8 @@ public:
 
         _meta["computation_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000;
 
-        const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / step + 1);
-        const auto dimy = _dimension(config.y0(), config.y1(), config.ny());
+        const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / row_step + 1);
+        const auto dimy = _dimension(config.y0(), config.y1(), (config.ny() - 1) / col_step + 1);
         const auto dimz = _dimension(config.z0(), config.z1(), config.nz());
         const auto dimm = _dimensions(_n_modes);
 
@@ -725,8 +705,8 @@ public:
         if (jobs.has_job("rays"))
             _save_meta_for("rays", { 
                     dimm,
-                    _dimension(config.a0(), config.a1(), config.na()),
-                    _dimension(config.l0(), config.l1(), (config.nl() - 1) / step + 1)
+                    _dimension(config.a0(), config.a1(), (config.na() - 1) / row_step + 1),
+                    _dimension(config.l0(), config.l1(), (config.nl() - 1) / col_step + 1)
                 }, files
             );
 
@@ -865,12 +845,12 @@ private:
 
     void _pick_writer() {
         if (binary)
-            _pick_const<ample::utils::binary_writer<types::real_t>>();
+            _pick_const<ample::utils::binary_writer>();
         else
-            _pick_const<ample::utils::text_writer<types::real_t>>();
+            _pick_const<ample::utils::text_writer>();
     }
 
-    template<typename W>
+    template<template<typename> typename W>
     void _pick_const() {
         if (config.const_modes())
             _pick_complex<W, true>();
@@ -878,7 +858,7 @@ private:
             _pick_complex<W, false>();
     }
 
-    template<typename W, bool Const>
+    template<template<typename> typename W, bool Const>
     void _pick_complex() {
         if (config.complex_modes())
             performer<W, make_modes<Const, types::complex_t>>(*this).perform();
@@ -941,13 +921,19 @@ private:
                     _load_source_spectrum();
 
                 _sel_result = new types::vector3d_t<types::real_t>(
-                    config.nx() / _owner.step + 1,
-                    types::vector2d_t<types::real_t>(config.ny(), types::vector1d_t<types::real_t>(config.nz(), 0))
+                        (config.nx() - 1) / _owner.row_step + 1,
+                    types::vector2d_t<types::real_t>(
+                        (config.ny() - 1) / _owner.col_step + 1,
+                        types::vector1d_t<types::real_t>(config.nz(), 0)
+                    )
                 );
 
                 _sel_buffer = new types::vector3d_t<types::complex_t>(
-                    config.nx() / _owner.step + 1,
-                    types::vector2d_t<types::complex_t>(config.ny(), types::vector1d_t<types::complex_t>(config.nz(), 0))
+                        (config.nx() - 1) / _owner.row_step + 1,
+                    types::vector2d_t<types::complex_t>(
+                        (config.ny() - 1) / _owner.col_step + 1,
+                        types::vector1d_t<types::complex_t>(config.nz(), 0)
+                    )
                 );
             }
 
@@ -1002,7 +988,7 @@ private:
                         for (auto& z : y)
                             z *= config.dt() / size;
 
-                W writer(_owner._add_extension(_owner.output / "sel"));
+                W<types::real_t> writer(_owner._add_extension(_owner.output / "sel"));
                 for (const auto& y : *_sel_result)
                     for (const auto& z : y)
                         writer.write(z);
@@ -1045,7 +1031,7 @@ private:
 
                 _owner._meta["tau"] = tau;
 
-                save_impulse(_owner._add_extension(_owner.output / "impulse").generic_string(), impulse, _owner.binary);
+                write_impulse(impulse, W<types::real_t>(_owner._add_extension(_owner.output / "impulse").generic_string()));
 
                 delete _ix;
                 delete _iy;
@@ -1132,12 +1118,12 @@ private:
 
             if (_owner.jobs.has_job("modes")) {
                 write_modes(k_j,
-                    [writer = W(_owner._get_filename("k_j"))](const auto &data) mutable {
+                    [writer=W<types::real_t>(_owner._get_filename("k_j"))](const auto &data) mutable {
                         writer.write(reinterpret_cast<const types::real_t*>(data.data()),\
                         data.size() * sizeof(data[0]) / sizeof(types::real_t)
                     );
                 });
-                write_modes(phi_j, W(_owner._get_filename("phi_j")));
+                write_modes(phi_j, W<types::real_t>(_owner._get_filename("phi_j")));
             }
 
             if constexpr (std::is_same_v<decltype(k0[0]), decltype(phi_s[0])>)
@@ -1158,17 +1144,33 @@ private:
 
         template<typename KJ, typename PJ>
         void _perform_rays(const KJ& k_j, const PJ& phi_j) {
-            if (_owner.jobs.has_job("rays"))
-                save_rays(_owner._get_filename("rays"), _owner.binary, k_j, _owner.step);
+            if (_owner.jobs.has_job("rays")) {
+                const auto na = config.na();
+                const auto nl = config.nl();
+                const auto nm = k_j.size();
+
+                const auto [rx, ry] = ample::rays::compute(
+                    config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, verbose(2));
+
+                write_rays(rx, ry, nm, _owner.row_step, _owner.col_step, ample::utils::binary_writer<types::real_t>(_owner._get_filename("rays")));
+            }
         }
 
         template<typename I, typename K0, typename KJ, typename PJ>
         void _perform_sel(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j) {
             if (_owner.jobs.has_job("sel"))
                 _perform_impulse(init, k0, k_j, phi_j,
-                    ample::utils::ekc_callback(_owner.step,
-                        [&sel_buffer=*_sel_buffer, i=0](const auto& x, const auto& data) mutable {
-                            sel_buffer[i++] = data;
+                    ample::utils::ekc_callback(_owner.row_step,
+                        [&sel_buffer=*_sel_buffer, i=size_t(0), this](const auto& x, const auto& data) mutable {
+                            size_t j = 0;
+
+                            auto [begin, end] = ample::utils::stride(data.begin(), data.end(), _owner.col_step);
+                            while (begin != end) {
+                                sel_buffer[i][j++] = *begin;
+                                ++begin;
+                            }
+
+                            ++i;
                         }
                     )
                 );
@@ -1221,12 +1223,12 @@ private:
         template<typename I, typename K0, typename KJ, typename PJ, typename... C>
         void _perform_solution(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, C&&... callbacks) {
             if (_owner.jobs.has_job("solution")) {
-                W writer(_owner._get_filename("solution"));
+                W<types::real_t> writer(_owner._get_filename("solution"));
                 _perform_solve(init, k0, k_j, phi_j, std::forward<C>(callbacks)...,
-                    ample::utils::ekc_callback(_owner.step,
-                        [&writer](const auto& x, const auto& data) mutable {
-                            for (const auto& it : data)
-                                writer.write(reinterpret_cast<const types::real_t*>(it.data()), it.size() * 2);
+                    ample::utils::ekc_callback(_owner.row_step,
+                        [&writer, this](const auto& x, const auto& data) mutable {
+                            for (size_t i = 0; i < data.size(); i += _owner.col_step)
+                                writer.write(reinterpret_cast<const types::real_t*>(data[i].data()), data[i].size() * 2);
                         }
                     )
                 );
@@ -1296,11 +1298,10 @@ int main(int argc, const char* argv[]) {
             ("config,c", po::value(&jobs_config.config_path)->default_value("config.json"), "Config filename");
 
         po::options_description output("Output options");
-        size_t step;
-        std::string output_filename;
         output.add_options()
             ("output,o", po::value(&jobs_config.output)->default_value("output"), "Output filename")
-            ("step,s", po::value(&jobs_config.step)->default_value(100)->value_name("k"), "Output every k-th computed row")
+            ("row_step", po::value(&jobs_config.row_step)->default_value(10)->value_name("k"), "Output every k-th computed row")
+            ("col_step", po::value(&jobs_config.col_step)->default_value(1)->value_name("k"), "Output every k-th computed column")
             ("binary", "Use binary output");
 
         po::options_description computation("Computation options");
@@ -1332,7 +1333,7 @@ int main(int argc, const char* argv[]) {
         return 0;
     }
     catch (const std::exception& e) {
-        std::cout << e.what() << std::endl;
+        std::cerr << e.what() << std::endl;
         return 1;
     }
 }
