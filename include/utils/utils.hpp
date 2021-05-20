@@ -20,10 +20,10 @@ namespace ample::utils {
         public:
 
             using iterator_category = std::output_iterator_tag;
-            using value_type = typename It::value_type;
-            using difference_type = typename It::difference_type;
-            using pointer = typename It::pointer;
-            using reference = typename It::reference;
+            using value_type        = typename It::value_type;
+            using difference_type   = typename It::difference_type;
+            using pointer           = typename It::pointer;
+            using reference         = typename It::reference;
 
             explicit stride_iterator(It begin, It end, const size_t& k) : _it(begin), _end(end), _k(k) {}
 
@@ -77,10 +77,10 @@ namespace ample::utils {
         };
 
         template<size_t>
-        struct __integrator;
+        struct _integrator;
 
         template<>
-        struct __integrator<5> {
+        struct _integrator<5> {
 
             template<typename T, typename F>
             static T integrate(const T& x, const T& h, const F& func, T& fx) {
@@ -103,7 +103,7 @@ namespace ample::utils {
         };
 
         template<>
-        struct __integrator<4> {
+        struct _integrator<4> {
 
             template<typename T, typename F>
             static T integrate(const T& x, const T& h, const F& func, T& fx) {
@@ -118,7 +118,7 @@ namespace ample::utils {
         };
 
         template<>
-        struct __integrator<3> {
+        struct _integrator<3> {
 
             template<typename T, typename F>
             static T integrate(const T& x, const T& h, const F& func, T& fx) {
@@ -133,7 +133,7 @@ namespace ample::utils {
         };
 
         template<>
-        struct __integrator<2> {
+        struct _integrator<2> {
 
             template<typename T, typename F>
             static T integrate(const T& x, const T& h, const F& func, T& fx) {
@@ -154,7 +154,7 @@ namespace ample::utils {
             static T integrate(T x, const T& h, const size_t& n, const F& func) {
                 T res = T(0), fx = func(x);
                 for (size_t i = 0; i < n; ++i, x += (N - 1) * h)
-                    res += __integrator<N>::integrate(x, h, func, fx);
+                    res += _integrator<N>::integrate(x, h, func, fx);
                 return res;
             }
 
@@ -172,7 +172,7 @@ namespace ample::utils {
             static T integrate_vector(size_t a, const T& h, const size_t& n, const V& data) {
                 T res = T(0), fx = data[a];
                 for (size_t i = 0; i < n; ++i, a += (N - 1))
-                    res += __integrator<N>::integrate_vector(a, h, data, fx);
+                    res += _integrator<N>::integrate_vector(a, h, data, fx);
                 return res;
             }
 
