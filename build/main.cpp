@@ -317,9 +317,11 @@ void print_modes(std::stringstream& stream) {
 }
 
 void print_tapering(std::stringstream& stream) {
-    const auto& [type, vl, vr] = config.get_tapering_parameters();
-    stream << "    Tapering:\n        Type: " << type << ";\n" << 
-        "        Left: " << vl << ";\n" <<
+    const auto& description = config.tapering();
+    const auto vl = THIS_OR_THAT(description.parameters(), types::real_t, "left", "value");
+    const auto vr = THIS_OR_THAT(description.parameters(), types::real_t, "right", "value");
+    stream << "    Tapering:\n        Type: " << description.type() << ";\n" <<
+        "        Left: "  << vl << ";\n" <<
         "        Right: " << vr << ";\n";
 }
 
@@ -414,11 +416,15 @@ void verbose_config_field_group_parameters(const field_group& group) {
 
 template<typename F>
 auto pass_tapering(const F& func) {
-    const auto& [type, vl, vr] = config.get_tapering_parameters();
+    const auto& description = config.tapering();
+    const auto& type = description.type();
+    const auto  args = description.has_args("left", "right") ? std::make_tuple("left", "right") : std::make_tuple("value", "value");
+
     if (type == "percentage")
-        return func(ample::percentage_tapering(vl, vr));
+        return func(description.construct<ample::percentage_tapering<types::real_t>, types::real_t, types::real_t>(std::get<0>(args), std::get<1>(args)));
+
     if (type == "angled")
-        return func(ample::angled_tapering(vl, vr));
+        return func(description.construct<ample::angled_tapering<types::real_t>, types::real_t, types::real_t>(std::get<0>(args), std::get<1>(args)));
 
     throw std::runtime_error(std::string("Unknown tapering type: ") + type);
 }

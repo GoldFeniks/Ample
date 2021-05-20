@@ -379,6 +379,7 @@ namespace ample {
         CONFIG_DATA_FIELD(sel_strict, bool)
         CONFIG_DATA_FIELD(coefficients, utils::object_descriptor)
         CONFIG_DATA_FIELD(boundary_conditions, utils::object_descriptor)
+        CONFIG_DATA_FIELD(tapering, utils::object_descriptor)
 
         CONFIG_FIELD(data, json)
 
@@ -524,15 +525,6 @@ namespace ample {
             return std::make_tuple(k0, utils::make_vector(phi_s, [](const auto& data) { return data[0]; }));
         }
 
-        auto get_tapering_parameters() const {
-            const auto type = _data["/tapering/0"_json_pointer].get<std::string>();
-            const auto& data = _data["/tapering/1"_json_pointer];
-            if (data.count("left") && data.count("right"))
-                return std::make_tuple(type, data["left"].get<T>(), data["right"].get<T>());
-            const auto value = data["value"].get<T>();
-            return std::make_tuple(type, value, value);
-        }
-
         void save(const std::filesystem::path& output) const {
             json out = _data;
 
@@ -593,7 +585,6 @@ namespace ample {
                 { "additive_depth", false },
                 { "past_n", size_t(0) },
                 { "border_width", size_t(10) },
-                { "coefficients", { "pade" } },
                 { "a0", -T(M_PI) / T(4) },
                 { "a1",  T(M_PI) / T(4) },
                 { "na", size_t(90) },
@@ -602,11 +593,14 @@ namespace ample {
                 { "nl", size_t(4001) },
                 { "init", "greene" },
                 { "tapering",
-                  { "angled",
                     {
-                      { "value", T(0.1) }
+                        { "type", "angled" },
+                        { "parameters",
+                            {
+                                { "value", T(0.1) }
+                            }
+                        }
                     }
-                  }
                 },
                 { "tolerance", T(0.02) },
                 { "reference_index", size_t(0) },
