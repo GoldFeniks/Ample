@@ -14,7 +14,6 @@
 #include <cstdlib>
 #include <numeric>
 #include <iomanip>
-#include <sstream>
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -35,6 +34,7 @@
 #include "initial_conditions.hpp"
 #include "utils/progress_bar.hpp"
 #include "utils/interpolation.hpp"
+#include "boundary_conditions.hpp"
 #include "utils/multi_optional.hpp"
 #include "boost/program_options.hpp"
 
@@ -377,10 +377,11 @@ void print_solver(std::stringstream& stream) {
     print_mesh_spec("x mesh", data["x0"], data["x1"], data["nx"], stream);
     print_mesh_spec("y mesh", data["y0"], data["y1"], data["ny"], stream);
 
+    const auto& description = config.coefficients();
     stream << "    Root approximation coefficients:\n" << 
-        "        a: " << helper.to_string(config.a()) << ";\n" <<
-        "        b: " << helper.to_string(config.b()) << ";\n" <<
-        "        c: " << helper.to_string(config.c()) << ";\n";
+        "        type: " << description.type() << ";\n" <<
+        "        n: " << helper.to_string(description.parameters()["n"].get<size_t>()) << ";\n" <<
+        "        m: " << helper.to_string(THIS_OR_THAT(description.parameters(), size_t, "n", "m")) << ";\n";
 
     stream << '\n';
 }
@@ -427,15 +428,15 @@ auto get_ray_initial_conditions(const KS& k0, const PS& phi_s,
     const ample::utils::linear_interpolated_data_1d<types::real_t>& k_j) {
     return pass_tapering(
         [&](const auto& tapering) {
-            return ample::ray_source(config.x0(), config.y0(), config.y1(), config.ny(), 0., config.y_s(), config.l1(), config.nl(),
-                config.a0(), config.a1(), config.na(), k0, phi_s, k_j, tapering);
+            return ample::ray_source(config.x0(), 0., config.y_s(), config.l1(), config.nl(),
+                                     config.a0(), config.a1(), config.na(), k0, phi_s, k_j, tapering);
         }
     );
 }
 
 template<typename KS, typename PS>
-auto get_ray_initial_conditions(const KS& k0, const PS& phi_s) {
-    auto [k_j, phi_j] = config.create_const_modes<types::real_t>({ config.z_s() }, config.n_modes(), verbose(2));
+auto get_ray_initial_conditions(const size_t& nw, const KS& k0, const PS& phi_s) {
+    auto [k_j, phi_j] = config.create_const_modes<types::real_t>({ config.z_s() }, nw, config.n_modes(), verbose(2));
 
     if (k_j.size() > k0.size())
         k_j.erase_last(k_j.size() - k0.size());
@@ -497,8 +498,7 @@ auto get_simple_initial_conditions(const KS& k0, const PS& phi_s) {
     if (init == "ray_simple")
         return pass_tapering(
             [&](const auto& tapering) {
-                return ample::simple_ray_source(config.x0(), config.y0(), config.y1(), config.ny(),
-                    config.a0(), config.a1(), k0, phi_s, tapering);
+                return ample::simple_ray_source(config.x0(), config.a0(), config.a1(), k0, phi_s, tapering);
             }
         );
 
@@ -509,18 +509,18 @@ template<typename KS, typename PS, typename KJ>
 auto get_initial_conditions(const KS& k0, const PS& phi_s, const KJ& k_j) {
     const auto& init = config.init();
 
-    if (init == "ray")
-        return get_ray_initial_conditions(k0, phi_s, k_j);
+//    if (init == "ray")
+//        return get_ray_initial_conditions(k0, phi_s, k_j);
 
     return get_simple_initial_conditions(k0, phi_s);
 }
 
 template<typename KS, typename PS>
-auto get_initial_conditions(const KS& k0, const PS& phi_s) {
+auto get_initial_conditions(const size_t& nw, const KS& k0, const PS& phi_s) {
     const auto& init = config.init();
 
-    if (init == "ray")
-        return get_ray_initial_conditions(k0, phi_s);
+//    if (init == "ray")
+//        return get_ray_initial_conditions(nw, k0, phi_s);
 
     return get_simple_initial_conditions(k0, phi_s);
 }
@@ -690,7 +690,7 @@ public:
         verbose_config_field_group_parameters(group);
 
         _meta["f"] = json::array();
-        _meta["k0"] = json::array();
+        _meta[config.complex_modes() ? "complex_k0" : "k0"] = json::array();
         _meta["jobs"] = jobs.raw();
         _meta["phi_s"] = json::array();
         _meta["outputs"] = json::array();
@@ -891,9 +891,13 @@ private:
                 return config.create_modes<T>(nm, show_progress);
         }
 
+        static auto make_source() {
+            return config.create_source_modes<T>(config.n_modes());
+        }
+
     };
 
-    template<typename W, typename M>
+    template<template<typename> typename W, typename M>
     class performer {
 
     public:
@@ -957,7 +961,7 @@ private:
                 if (_source_spectrum.has_value())
                     _s = _source_spectrum[fi];
 
-                const auto [k0, phi_s] = config.create_source_modes(config.n_modes());
+                const auto [k0, phi_s] = M::make_source();
                 if (k0.empty())
                     continue;
 
@@ -1100,7 +1104,7 @@ private:
             const auto init = get_initial_conditions(k0, phi_s, k_j);
 
             if (_owner.jobs.has_job("init"))
-                write_conditions(init, W(_owner._get_filename("init")));
+                write_conditions(init.make(config.y0(), config.y1(), config.ny(), k0.size()), _owner.col_step, W<types::complex_t>(_owner._get_filename("init")));
 
             return init;
         }
@@ -1130,7 +1134,17 @@ private:
                 write_modes(phi_j, W(_owner._get_filename("phi_j")));
             }
 
-            _owner._meta["k0"].push_back(k0);
+            if constexpr (std::is_same_v<decltype(k0[0]), decltype(phi_s[0])>)
+                _owner._meta["k0"].push_back(k0);
+            else {
+                types::vector1d_t<types::real_t> k0s(k0.size() * 2);
+                for (size_t i = 0; i < k0.size(); ++i) {
+                    k0s[2 * i]     = k0[i].real();
+                    k0s[2 + i + 1] = k0[i].imag();
+                }
+
+                _owner._meta["complex_k0"].push_back(k0s);
+            }
             _owner._meta["phi_s"].push_back(phi_s);
 
             return std::make_tuple(std::move(k_j), std::move(phi_j));
@@ -1220,7 +1234,13 @@ private:
             if (!_owner.jobs.has_job("solution") && !_owner.jobs.has_job("impulse"))
                 return;
 
-            ample::solver solver(config);
+            const auto descriptor = config.boundary_conditions();
+
+            ample::solver solver(
+                descriptor.construct<
+                    ample::pml_boundary_conditions<types::real_t>, size_t, ample::pml_function<types::real_t>>("width" ,"function"),
+                config
+            );
 
             auto callback = ample::utils::callbacks(
                 ample::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)),

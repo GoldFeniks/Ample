@@ -16,11 +16,14 @@
 #include "utils/join.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
+#include "coefficients.hpp"
 #include "nlohmann/json.hpp"
-#include "utils/convertors.hpp"
+#include "io/convertors.hpp"
 #include "utils/dimensions.hpp"
 #include "initial_conditions.hpp"
+#include "boundary_conditions.hpp"
 #include "utils/multi_optional.hpp"
+#include "utils/object_descriptor.hpp"
 
 namespace ample {
 
@@ -164,9 +167,11 @@ namespace ample {
         }                                                                   \
         void field(const type& value) {                                     \
             _data_##field = value;                                          \
+            _data[#field] = _data_##field.value();                          \
         }                                                                   \
         void field(type&& value) {                                          \
             _data_##field = std::move(value);                               \
+            _data[#field] = _data_##field.value();                          \
         }
 
 #define CONFIG_FIELD(field, type)                                           \
@@ -224,16 +229,20 @@ namespace ample {
         continue;                                                           \
     }
 
+#define MAKE_COEFFICIENTS(name, kind, check, type, ...) \
+    if (name == kind) {                                 \
+        check;                                          \
+        return type(__VA_ARGS__);                       \
+    } else
+
+#define THIS_OR_THAT(data, type, this, that) data.template contains(this) ? data[this].template get<type>() : data[that].template get<type>()
+
     template<typename T = types::real_t>
     class config {
 
     public:
 
-        config() :
-            _data(_default_data())
-        {
-            _fill_coefficients(_data["coefficients"]);
-        }
+        config() : _data(_default_data()) {}
 
         explicit config(const std::string& filename) : _data(_default_data()) {
             update_from_file(filename);
@@ -300,13 +309,17 @@ namespace ample {
                 const auto type = it["type"].template get<std::string>();
 
                 try {
-                    READ_INPUT_DATA(type, "k0",          _k0,          _read_k1d_data,   it, _path, ASSERT_NO_VALUE("k0",          _k0,          has_value))
                     READ_INPUT_DATA(type, "phi_s",       _phi_s,       _read_k1d_data,   it, _path, ASSERT_NO_VALUE("phi_s",       _phi_s,       has_value))
                     READ_INPUT_DATA(type, "phi_j",       _phi_j,       _read_phi_j,      it, _path, ASSERT_NO_VALUE("phi_j",       _phi_j,       has_value))
                     READ_INPUT_DATA(type, "frequencies", _frequencies, _read_1d_data,    it, _path, ASSERT_NO_VALUE("frequencies", _frequencies, has_value))
                     READ_INPUT_DATA(type, "bathymetry",  _bathymetry,  _read_bathymetry, it, _path, ASSERT_NO_VALUE("bathymetry",  _bathymetry,  has_value))
                     READ_INPUT_DATA(type, "hydrology",   _hydrology,   _read_hydrology,  it, _path, ASSERT_NO_VALUE("hydrology",   _hydrology,   has_value))
                     READ_INPUT_DATA(type, "receivers",   _receivers,   _read_receivers,  it, _path, ASSERT_NO_VALUE("receivers",   _receivers,   has_value))
+
+                    READ_INPUT_DATA(type, "k0", _k0, _read_k1d_data<T>, it, _path,
+                                    ASSERT_NO_VALUE("k0", _k0, template has_value<types::vector2d_t<T>>))
+                    READ_INPUT_DATA(type, "complex_k0", _k0, _read_k1d_data<std::complex<T>>, it, _path,
+                                    ASSERT_NO_VALUE("complex k0", _k0, template has_value<types::vector2d_t<std::complex<T>>>))
 
                     READ_INPUT_DATA(type, "k_j", _k_j, _read_k_j<T>, it, _path,
                                       ASSERT_NO_VALUE("k_j", _k_j, template has_value<types::vector1d_t<utils::linear_interpolated_data_2d<T, T>>>))
@@ -324,7 +337,6 @@ namespace ample {
 
                 throw std::runtime_error(std::string("Unknown input data type \"") + type + "\"");
             }
-            _fill_coefficients(_data["coefficients"]);
         }
 
         CONFIG_DATA_FIELD(mode_subset, double)
@@ -365,11 +377,10 @@ namespace ample {
         CONFIG_DATA_FIELD(reference_index, size_t)
         CONFIG_DATA_FIELD(sel_range, types::tuple2_t<T>)
         CONFIG_DATA_FIELD(sel_strict, bool)
+        CONFIG_DATA_FIELD(coefficients, utils::object_descriptor)
+        CONFIG_DATA_FIELD(boundary_conditions, utils::object_descriptor)
 
         CONFIG_FIELD(data, json)
-        CONFIG_FIELD(a, T)
-        CONFIG_FIELD(b, T)
-        CONFIG_FIELD(c, T)
 
         CONFIG_INPUT_DATA(bathymetry, [0], utils::linear_interpolated_data_2d<T>)
         CONFIG_INPUT_DATA(hydrology, [0], utils::delaunay_interpolated_data_2d<T>)
@@ -378,7 +389,6 @@ namespace ample {
         CONFIG_INPUT_DATA(source_spectrum, ;, types::vector1d_t<std::complex<T>>)
         CONFIG_INPUT_DATA(frequencies, ;, types::vector1d_t<T>)
         CONFIG_INPUT_DATA(times, ;, types::vector1d_t<T>)
-        CONFIG_INPUT_DATA(k0, [_index], types::vector2d_t<T>)
         CONFIG_INPUT_DATA(phi_s, [_index], types::vector2d_t<T>)
         CONFIG_INPUT_DATA(phi_j, [_index], types::vector1d_t<utils::linear_interpolated_data_3d<T>>)
 
@@ -386,13 +396,9 @@ namespace ample {
         CONFIG_INPUT_MULTI_DATA(k_j, k_j, [_index], types::vector1d_t<utils::linear_interpolated_data_2d<T>>)
         CONFIG_INPUT_MULTI_DATA(complex_k_j, k_j, [_index], types::vector1d_t<utils::linear_interpolated_data_2d<T, std::complex<T>>>)
 
-        auto all_k0() const {
-            return _k0.value();
-        }
-
-        auto all_phi_s() const {
-            return _phi_s.value();
-        }
+        CONFIG_INPUT_MULTI_DATA_DEF(k0, types::vector2d_t<T>, types::vector2d_t<std::complex<T>>)
+        CONFIG_INPUT_MULTI_DATA(k0, k0, [_index], types::vector2d_t<T>)
+        CONFIG_INPUT_MULTI_DATA(complex_k0, k0, [_index], types::vector2d_t<std::complex<T>>)
 
         auto x_bounds() const {
             return std::make_tuple(x0(), x1());
@@ -404,10 +410,6 @@ namespace ample {
 
         auto bounds() const {
             return std::tuple_cat(x_bounds(), y_bounds());
-        }
-
-        auto coefficients() const {
-            return std::make_tuple(a(), b(), c());
         }
 
         auto f() const {
@@ -512,11 +514,12 @@ namespace ample {
             return modes.interpolated_line(x0(), yn, utils::progress_bar_callback(yn, "Modes", show_progress), c);
         }
 
+        template<typename V = T>
         auto create_source_modes(const size_t& c = 0) const {
-            if (has_k0() && has_phi_s())
-                return std::make_tuple(k0(), phi_s());
+            if (_k0.template has_value<types::vector2d_t<V>>() && has_phi_s())
+                return std::make_tuple(std::get<types::vector2d_t<V>>(_k0)[_index], phi_s());
 
-            modes<T> modes(*this, { z_s() });
+            modes<T, V> modes(*this, { z_s() });
             const auto [k0, phi_s] = modes.point(0, y_s(), c);
             return std::make_tuple(k0, utils::make_vector(phi_s, [](const auto& data) { return data[0]; }));
         }
@@ -542,12 +545,26 @@ namespace ample {
                 out["mny"] = bathymetry().y().size();
             }
 
-            const auto& coeffs = _data["coefficients"];
-            if (!(coeffs[0].template get<std::string>() == "abc"))
-                out["coefficients"] = { "abc", { a(), b(), c() } };
-
             std::ofstream file(output / "config.json");
             file << std::setw(4) << out << std::endl;
+        }
+
+        template<typename V>
+        auto make_coefficients() const {
+            const auto& description = coefficients();
+            const auto& type = description.type();
+            const auto& para = description.parameters();
+            MAKE_COEFFICIENTS(type, "ssp",   , ssp_coefficients<V>,   para["n"].template get<size_t>(), THIS_OR_THAT(para, size_t, "m", "n"))
+            MAKE_COEFFICIENTS(type, "wampe", , wampe_coefficients<V>, para["n"].template get<size_t>(), THIS_OR_THAT(para, size_t, "m", "n"))
+            MAKE_COEFFICIENTS(type, "theta_ssp",   utils::dynamic_assert(!para.contains("m"), "Cannot specify m with theta coefficients"),
+                              theta_ssp_coefficients<V>,   para["n"].template get<size_t>(), para["theta"].template get<T>())
+            MAKE_COEFFICIENTS(type, "theta_wampe", utils::dynamic_assert(!para.contains("m"), "Cannot specify m with theta coefficients"),
+                              theta_wampe_coefficients<V>, para["n"].template get<size_t>(), para["theta"].template get<T>())
+            {
+                utils::dynamic_assert(false, "Unknown coefficients type \"", type, '"');
+            }
+
+            throw std::logic_error("Unreachable code");
         }
 
     private:
@@ -594,7 +611,37 @@ namespace ample {
                 { "tolerance", T(0.02) },
                 { "reference_index", size_t(0) },
                 { "sel_range", { T(-1), T(-1) } },
-                { "sel_strict", false }
+                { "sel_strict", false },
+                { "coefficients",
+                    {
+                        { "type", "ssp" },
+                        { "parameters",
+                            {
+                                { "n", size_t(1) }
+                            }
+                        }
+                    }
+                },
+                { "boundary_conditions",
+                    {
+                        { "type", "pml" },
+                        { "parameters",
+                            {
+                                { "width", size_t(500) },
+                                { "function",
+                                    {
+                                        { "type", "cubic" },
+                                        { "parameters",
+                                            {
+                                                { "scale", T(5) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             };
         }
 
@@ -718,27 +765,9 @@ namespace ample {
             return _impl::input_data<T, utils::no_values_dim>(data, path).data;
         }
 
+        template<typename V = T>
         static auto _read_k1d_data(const json& data, const std::filesystem::path& path) {
-            return _impl::input_data<T, utils::var_dim<utils::no_values_dim>>(data, path).data;
-        }
-
-        void _fill_coefficients(const json& data) {
-            const auto type = data[0].template get<std::string>();
-            if (type == "pade") {
-                const auto [a, b, c] = series::pade_series_coefficients<1, T>()[0];
-                _a = a;
-                _b = b;
-                _c = c;
-                return;
-            }
-            if (type == "abc") {
-                _a = data["/1/a"_json_pointer].template get<T>();
-                _b = data["/1/b"_json_pointer].template get<T>();
-                _c = data["/1/c"_json_pointer].template get<T>();
-                return;
-            }
-
-            throw std::runtime_error("Unknown coefficients type: " + type);
+            return _impl::input_data<V, utils::var_dim<utils::no_values_dim>>(data, path).data;
         }
 
     };

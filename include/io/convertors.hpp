@@ -4,9 +4,9 @@
 #include <complex>
 #include <istream>
 #include <sstream>
-#include "join.hpp"
-#include "types.hpp"
-#include "assert.hpp"
+#include "utils/join.hpp"
+#include "utils/types.hpp"
+#include "utils/assert.hpp"
 #include "nlohmann/json.hpp"
 
 template<typename T>
@@ -20,6 +20,12 @@ std::istream& operator>>(std::istream& stream, std::complex<T>& value) {
     T real, imag;
     stream >> real >> imag;
     value = std::complex<T>(real, imag);
+    return stream;
+}
+
+template<typename T>
+std::istream& operator<<(std::istream& stream, std::complex<T>& value) {
+    stream << value.real() << ' ' << value.imag();
     return stream;
 }
 

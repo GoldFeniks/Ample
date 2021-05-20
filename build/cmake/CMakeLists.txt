@@ -35,6 +35,7 @@ include_directories(
     ${PROJECT_DIR}/modules/DORK/include
     ${PROJECT_DIR}/modules/zip/include
     ${Boost_INCLUDE_DIR}
+    ${PROJECT_DIR}/modules/CAMBALA/third_party/eigen
 )
 
 add_executable(AMPLE
@@ -47,6 +48,7 @@ add_executable(AMPLE
         ${PROJECT_DIR}/include/rays.hpp
         ${PROJECT_DIR}/include/series.hpp
         ${PROJECT_DIR}/include/solver.hpp
+        ${PROJECT_DIR}/include/boundary_conditions.hpp
         ${PROJECT_DIR}/include/utils/callback.hpp
         ${PROJECT_DIR}/include/utils/convertors.hpp
         ${PROJECT_DIR}/include/utils/fft.hpp

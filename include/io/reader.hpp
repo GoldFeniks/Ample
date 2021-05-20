@@ -3,10 +3,10 @@
 #include <vector>
 #include <istream>
 #include <sstream>
+#include "convertors.hpp"
 #include "../utils/types.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/assert.hpp"
-#include "../utils/convertors.hpp"
 #include "../utils/dimensions.hpp"
 
 namespace ample {
