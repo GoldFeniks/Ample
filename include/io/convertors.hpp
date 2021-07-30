@@ -74,6 +74,10 @@ namespace nlohmann {
             throw std::runtime_error(ample::utils::join("Cannot parse complex value from ", data));
         }
 
+        static void to_json(nlohmann::json& data, const std::complex<T>& value) {
+            data = { { "real",  value.real() }, { "imag", value.imag() } };
+        }
+
     };
 
     template<typename T>
@@ -83,7 +87,7 @@ namespace nlohmann {
             if (data.is_object()) {
                 ample::utils::dynamic_assert(
                     data.contains("x") && data.contains("y") && data.contains("z") && data.size() == 3 && data["x"].is_number() && data["y"].is_number() && data["z"].is_number(),
-                    "Couldn't parse point value, expected an object in format { \"x\": <number>, \"y\": <number>, \"z\": <number> }, but got ", data
+                    R"(Couldn't parse point value, expected an object in format { "x": <number>, "y": <number>, "z": <number> }, but got )", data
                 );
                 value = { data["x"].template get<T>(), data["y"].template get<T>(), data["z"].template get<T>() };
                 return;
