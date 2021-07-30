@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <complex>
 #include <algorithm>
+#include <condition_variable>
 #include "config.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"

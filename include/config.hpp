@@ -234,7 +234,7 @@ namespace ample {
         return type(__VA_ARGS__);                       \
     } else
 
-#define THIS_OR_THAT(data, type, this, that) data.template contains(this) ? data[this].template get<type>() : data[that].template get<type>()
+#define THIS_OR_THAT(data, type, this, that) data.contains(this) ? data[this].template get<type>() : data[that].template get<type>()
 
     template<typename T = types::real_t>
     class config {
