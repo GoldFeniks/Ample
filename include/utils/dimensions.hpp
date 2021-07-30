@@ -243,9 +243,6 @@ namespace ample::utils {
         template<size_t M>
         static constexpr bool is_variable_dim = is_variable_dim_v<std::tuple_element_t<M, value_t>>;
 
-        template<size_t M>
-        static constexpr bool has_dim = M < N;
-
     private:
 
         data_t _data;

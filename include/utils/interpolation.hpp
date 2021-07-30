@@ -851,104 +851,6 @@ namespace ample::utils {
         };
 
         template<typename T, typename V = T>
-        class nearest_neighbour_interpolator_2d : public interpolator_2d<T, V> {// hopefully there's only a few points
-
-        public:
-
-            using data_t = types::vector1d_t<V>;
-            using typename interpolator_2d<T, V>::line_t;
-            using typename interpolator_2d<T, V>::field_t;
-            using args_t = std::tuple<types::vector1d_t<std::tuple<T, T>>>;
-
-            using interpolator_2d<T, V>::line;
-            using interpolator_2d<T, V>::field;
-
-            nearest_neighbour_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data) :
-                    _args(std::move(args)), _data(data) {}
-            nearest_neighbour_interpolator_2d(std::reference_wrapper<const args_t> args, data_t&& data) :
-                    _args(std::move(args)), _data(std::move(data)) {}
-
-            V point(const T& x, const T& y) const override {
-                return _nearest(x, y);
-            }
-
-            void line(const T& x, const T& y0, const T& y1, line_t& res) const override {
-                const auto dy = (y1 - y0) / (res.size() - 1);
-                for (size_t i = 0; i < res.size(); ++i)
-                    res[i] = _nearest(x, y0 + i * dy);
-            }
-
-            line_t line(const T& x, const T& y0, const T& y1, size_t n) const {
-                line_t res(n);
-                line(x, y0, y1, res);
-                return res;
-            }
-
-            void field(const T& x0, const T& x1, const T& y0, const T& y1, field_t& res) const override {
-                const auto dx = (x1 - x0) / (res.size() - 1);
-                const auto dy = (y1 - y0) / (res[0].size() - 1);
-                for (size_t i = 0; i < res.size(); ++i)
-                    for (size_t j = 0; j < res[i].size(); ++j)
-                        res[i][j] = _nearest(x0 + i * dx, y0 + j * dy);
-            }
-
-            inline const auto& points() const {
-                return std::get<0>(_args.get());
-            }
-
-            inline const auto& points(const size_t& i) const {
-                return points()[i];
-            }
-
-            inline const auto& data() const {
-                return _data;
-            }
-
-            const auto& operator[](const size_t& i) const {
-                return _data[i];
-            }
-
-            void replace_data(const data_t& data) {
-                _impl::check_vector_sizes<V, 1>(_data, data);
-                _data = data;
-            }
-
-            void replace_data(data_t&& data) {
-                _impl::check_vector_sizes<V, 1>(_data, data);
-                _data = std::move(data);
-            }
-
-        protected:
-
-            data_t _data;
-            std::reference_wrapper<const args_t> _args;
-
-        private:
-
-            template<typename, typename>
-            friend class _impl::interpolated_data;
-
-            static T _distance(const T& x, const T& y, const std::tuple<T, T>& p) {
-                return std::pow(x - std::get<0>(p), 2) + std::pow(y - std::get<1>(p), 2);
-            }
-
-            V _nearest(const T& x, const T& y) const {
-                size_t index = 0;
-                const auto& points = this->points();
-                T distance = this->_distance(x, y, points[0]);
-                for (size_t i = 1; i < points.size(); ++i) {
-                    const auto d = this->_distance(x, y, points[i]);
-                    if (d < distance) {
-                        distance = d;
-                        index = i;
-                    }
-                }
-                return _data[index];
-            }
-
-        };
-
-        template<typename T, typename V = T>
         class linear_interpolator_3d : public interpolator_3d<T, V> {
 
         public:
@@ -1080,8 +982,5 @@ namespace ample::utils {
 
     template<typename T, typename V = T>
     using delaunay_interpolated_data_2d = interpolated_data<interpolators::delaunay_interpolator_2d<T, V>>;
-
-    template<typename T, typename V = T>
-    using nearest_neighbour_interpolated_data_2d = interpolated_data<interpolators::nearest_neighbour_interpolator_2d<T, V>>;
 
 }// namespace ample::utils
