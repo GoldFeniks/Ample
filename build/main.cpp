@@ -588,6 +588,11 @@ void write_impulse(const types::vector2d_t<types::real_t>& impulse, W&& writer) 
         writer.write(it);
 }
 
+template<typename V, typename W>
+void write_vector(const types::vector1d_t<V>& data, W&& writer) {
+    writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * sizeof(data[0]) / sizeof(types::real_t));
+}
+
 template<typename S, typename K, typename V, typename I, typename C>
 void solve(S& solver, const I& init, const K& k0,
            const ample::utils::linear_interpolated_data_1d<types::real_t, V>& k_j,
@@ -668,6 +673,8 @@ public:
         _prep("rays", field_group::rays, group);
         _prep("modes", "phi_j", field_group::modes, group);
         _prep("modes", "k_j", field_group::modes, group);
+        _prep("modes", "k0", field_group::modes, group);
+        _prep("modes", "phi_s", field_group::modes, group);
         _prep("solution", field_group::modes | field_group::solver | field_group::initial, group);
 
         if (jobs.has_job("impulse"))
@@ -676,9 +683,7 @@ public:
         verbose_config_field_group_parameters(group);
 
         _meta["f"] = json::array();
-        _meta[config.complex_modes() ? "complex_k0" : "k0"] = json::array();
         _meta["jobs"] = jobs.raw();
-        _meta["phi_s"] = json::array();
         _meta["outputs"] = json::array();
         _meta["original_config_path"] = config_path.generic_string();
 
@@ -686,7 +691,7 @@ public:
         _pick_writer();
         const auto end = std::chrono::system_clock::now();
 
-        _meta["computation_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000;
+        _meta["computation_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.;
 
         const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / row_step + 1);
         const auto dimy = _dimension(config.y0(), config.y1(), (config.ny() - 1) / col_step + 1);
@@ -710,38 +715,42 @@ public:
                 }, files
             );
 
-        if (jobs.has_job("modes"))
+        if (jobs.has_job("modes")) {
             if (config.const_modes()) {
                 _save_meta_for("phi_j",
-                    {
-                        dimm,
-                        _dimension(config.y0(), config.y1(), config.mny()),
-                        _dimension(config.z0(), config.z1(), config.mnz())
-                    }, files
+                   {
+                       dimm,
+                       _dimension(config.y0(), config.y1(), config.mny()),
+                       _dimension(config.z0(), config.z1(), config.mnz())
+                   }, files
                 );
                 _save_meta_for("k_j", config.complex_modes() ? "complex_k_j" : "k_j",
-                    {
-                        dimm,
-                        _dimension(config.y0(), config.y1(), config.mny())
-                    }, files
+                   {
+                       dimm,
+                       _dimension(config.y0(), config.y1(), config.mny())
+                   }, files
                 );
             } else {
                 _save_meta_for("phi_j",
-                    {
-                        dimm,
-                        _dimension(config.x0(), config.x1(), config.mnx()),
-                        _dimension(config.y0(), config.y1(), config.mny()),
-                        _dimension(config.z0(), config.z1(), config.mnz())
-                    }, files
+                   {
+                       dimm,
+                       _dimension(config.x0(), config.x1(), config.mnx()),
+                       _dimension(config.y0(), config.y1(), config.mny()),
+                       _dimension(config.z0(), config.z1(), config.mnz())
+                   }, files
                 );
                 _save_meta_for("k_j", config.complex_modes() ? "complex_k_j" : "k_j",
-                    {
-                           dimm,
-                           _dimension(config.x0(), config.x1(), config.mnx()),
-                           _dimension(config.y0(), config.y1(), config.mny())
-                    }, files
+                   {
+                       dimm,
+                       _dimension(config.x0(), config.x1(), config.mnx()),
+                       _dimension(config.y0(), config.y1(), config.mny())
+                   }, files
                 );
             }
+
+            _save_meta_for("k0", config.complex_modes() ? "complex_k0" : "k0", { dimm }, files);
+            _save_meta_for("phi_s", "phi_s", { dimm }, files);
+        }
 
         if (jobs.has_job("impulse"))
             _meta["outputs"].push_back(_get_meta_for("impulse", { 
@@ -822,9 +831,13 @@ private:
         };
     }
 
+    void _make_output_folder(const char* folder) const {
+        std::filesystem::create_directories(output / folder);
+    }
+
     void _prep(const char* name, const char* folder, const field_group& params, field_group& group) const {
         if (jobs.has_job(name)) {
-            std::filesystem::create_directories(output / folder);
+            _make_output_folder(folder);
             group = group | params;
         }
     }
@@ -1119,23 +1132,12 @@ private:
             if (_owner.jobs.has_job("modes")) {
                 write_modes(k_j,
                     [writer=W<types::real_t>(_owner._get_filename("k_j"))](const auto &data) mutable {
-                        writer.write(reinterpret_cast<const types::real_t*>(data.data()),\
-                        data.size() * sizeof(data[0]) / sizeof(types::real_t)
-                    );
+                        write_vector(data, writer);
                 });
                 write_modes(phi_j, W<types::real_t>(_owner._get_filename("phi_j")));
-            }
 
-            if constexpr (std::is_same_v<decltype(k0[0]), decltype(phi_s[0])>)
-                _owner._meta["k0"].push_back(k0);
-            else {
-                types::vector1d_t<types::real_t> k0s(k0.size() * 2);
-                for (size_t i = 0; i < k0.size(); ++i) {
-                    k0s[2 * i]     = k0[i].real();
-                    k0s[2 + i + 1] = k0[i].imag();
-                }
-
-                _owner._meta["complex_k0"].push_back(k0s);
+                write_vector(k0,    W<types::real_t>(_owner._get_filename("k0")));
+                write_vector(phi_s, W<types::real_t>(_owner._get_filename("phi_s")));
             }
             _owner._meta["phi_s"].push_back(phi_s);
 

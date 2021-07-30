@@ -44,13 +44,12 @@ add_executable(AMPLE
         ${PROJECT_DIR}/include/initial_conditions.hpp
         ${PROJECT_DIR}/include/io/reader.hpp
         ${PROJECT_DIR}/include/io/writer.hpp
+        ${PROJECT_DIR}/include/io/convertors.hpp
         ${PROJECT_DIR}/include/modes.hpp
         ${PROJECT_DIR}/include/rays.hpp
-        ${PROJECT_DIR}/include/series.hpp
         ${PROJECT_DIR}/include/solver.hpp
         ${PROJECT_DIR}/include/boundary_conditions.hpp
         ${PROJECT_DIR}/include/utils/callback.hpp
-        ${PROJECT_DIR}/include/utils/convertors.hpp
         ${PROJECT_DIR}/include/utils/fft.hpp
         ${PROJECT_DIR}/include/utils/interpolation.hpp
         ${PROJECT_DIR}/include/utils/progress_bar.hpp
