@@ -88,6 +88,8 @@ namespace ample {
                 for (size_t i = 0; i < a0.size(); ++i)
                     a1[i] = a1[i] * theta + a0[i] * theta1;
 
+                a1.back() *= theta;
+
                 for (size_t i = 0; i < b0.size(); ++i)
                     b1[i] = b1[i] * theta + b0[i] * theta1;
 
