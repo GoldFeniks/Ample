@@ -994,12 +994,10 @@ private:
             }
 
             if (has_sel) {
-                const auto size = has_impulse ? _fft->size() : _source_spectrum.size();
-
                 for (auto& x : *_sel_result)
                     for (auto& y : x)
                         for (auto& z : y)
-                            z *= config.dt() / size;
+                            z *= config.dt();
 
                 W<types::real_t> writer(_owner._add_extension(_owner.output / "sel"));
                 for (const auto& y : *_sel_result)
