@@ -171,6 +171,8 @@ namespace ample {
                 ), num_workers, c
             );
 
+            _fill_gaps(k_j);
+
             return std::make_tuple(std::move(k_j), std::move(phi_j));
         }
 
@@ -291,6 +293,9 @@ namespace ample {
                     }
                 ), num_workers, c
             );
+
+            for (auto& it : k_j)
+                _fill_gaps(it);
 
             if (smooth)
                 _smooth((y1 - y0) / (ny - 1), _config.border_width(), k_j, phi_j);
@@ -460,15 +465,10 @@ namespace ample {
                 const size_t& nx, const size_t& ny, const size_t& i, const size_t& j, const size_t& mm, size_t& m) {
             const auto n = std::min(n_m.khs.size(), mm);
             if (n > k_j.size()) {
-                k_j.resize(n, types::vector2d_t<V>(nx, types::vector1d_t<V>(ny, V(0))));
+                k_j.resize(n, types::vector2d_t<V>(nx, types::vector1d_t<V>(ny, V(-1))));
                 phi_j.resize(n, types::vector3d_t<T>(nx, types::vector2d_t<T>(ny, types::vector1d_t<T>(n_m.zr.size(), T(0)))));
             }
             _impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i, j);
-            for (size_t k = m; k < n; ++k)
-                for (size_t l = 0; l < j; ++l)
-                    k_j[k][i][l] = k_j[k][i][j];
-            for (size_t k = n; k < m; ++k)
-                k_j[k][i][j] = k_j[k][i][j - 1];
             m = std::max(n, m);
         }
 
@@ -476,16 +476,71 @@ namespace ample {
                                const size_t& ny, const size_t& i, const size_t& mm, size_t& m) {
             const auto n = std::min(n_m.khs.size(), mm);
             if (n > k_j.size()) {
-                k_j.resize(n, types::vector1d_t<V>(ny, V(0)));
+                k_j.resize(n, types::vector1d_t<V>(ny, V(-1)));
                 phi_j.resize(n, types::vector2d_t<T>(ny, types::vector1d_t<T>(n_m.zr.size(), T(0))));
             }
             _impl::modes_copier<T, V>::copy(n_m, k_j, phi_j, i);
-            for (size_t k = m; k < n; ++k)
-                for (size_t l = 0; l < i; ++l)
-                    k_j[k][l] = k_j[k][i];
-            for (size_t k = n; k < m; ++k)
-                k_j[k][i] = k_j[k][i - 1];
             m = std::max(n, m);
+        }
+
+        static void _fill_gaps(types::vector1d_t<V>& line) {
+            V left_value, right_value;
+            size_t left = 0, right = 0;
+
+            while (true) {
+                while (left < line.size() && real(line[left]) >= T(0))
+                    ++left;
+
+                if (left >= line.size())
+                    break;
+
+                right = left + 1;
+                while (right < line.size() && real(line[right]) < T(0))
+                    ++right;
+
+                if (left == 0 && right >= line.size()) {
+                    line.assign(line.size(), T(0));
+                    break;
+                }
+
+                if (right < line.size()) {
+                    right_value = line[right];
+                    if (left == 0)
+                        left_value = right_value;
+                }
+
+                if (left != 0) {
+                    left_value = line[left - 1];
+                    if (right >= line.size())
+                        right_value = left_value;
+                }
+
+                const auto d = (right_value - left_value) / static_cast<T>(right - left + 1);
+                auto value = left_value + d;
+
+                for (size_t i = left; i < right; ++i, value += d)
+                    line[i] = value;
+
+                left = right + 1;
+            }
+        }
+
+        static void _fill_gaps(types::vector2d_t<V>& k_j) {
+            for (auto& line : k_j)
+                _fill_gaps(line);
+        }
+
+        static void _fill_gaps(types::vector3d_t<V>& k_j) {
+            for (auto& area : k_j)
+                for (auto& line : area)
+                    _fill_gaps(line);
+        }
+
+        static void _real(V& value) {
+            if constexpr (Complex)
+                return value.real();
+            else
+                return value;
         }
 
     };
