@@ -169,7 +169,7 @@ void print_table(const X& x, const Y& y, const V& values, std::stringstream& str
     auto* current = sep_line;
     for (const auto& it : widths) {
         *current = '+';
-        current += it + 3;
+        current += static_cast<ptrdiff_t>(it + 3);
     }
     *current = '+';
 
@@ -207,7 +207,7 @@ void print_table(const X& x, const Y& y, const V& values, std::stringstream& str
         current = sep_line;
         for (const auto& it : widths) {
             *current = '+';
-            current += it + 3;
+            current += static_cast<ptrdiff_t>(it + 3);
         }
         *current = '+';
     }
