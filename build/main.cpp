@@ -749,7 +749,7 @@ public:
             }
 
             _save_meta_for("k0", config.complex_modes() ? "complex_k0" : "k0", { dimm }, files);
-            _save_meta_for("phi_s", "phi_s", { dimm }, files);
+            _save_meta_for("phi_s", { dimm }, files);
         }
 
         if (jobs.has_job("impulse"))
@@ -963,20 +963,22 @@ private:
                     ) && !(config.sel_strict() && f0 <= f && f1 >= f))
                     continue;
 
+                _owner._meta["f"].push_back(f);
+
                 if (_source_spectrum.has_value())
                     _s = _source_spectrum[fi];
 
                 const auto [k0, phi_s] = M::make_source();
-                if (k0.empty())
-                    continue;
-
-                _owner._meta["f"].push_back(f);
                 const auto [k_j, phi_j] = _perform_modes(k0, phi_s);
+                
                 const auto init = _perform_init(k0, phi_s, k_j);
 
-                _perform_rays(k_j, phi_j);
+                _perform_rays(k_j, phi_j);                
 
                 _perform_sel(init, k0, k_j, phi_j);
+
+                if (k0.empty())
+                    continue;
 
                 if (has_impulse) {
                     auto& result = *_impulse_result;
@@ -1117,14 +1119,20 @@ private:
             const size_t nm = k0.size();
             _owner._n_modes.push_back(nm);
 
-            const auto start = std::chrono::system_clock::now();
-            auto [k_j, phi_j] = M::make(_owner.num_workers, nm, verbose(2));
-            const auto end = std::chrono::system_clock::now();
-            verboseln_lv(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+            using modes_t = decltype(M::make(size_t(0), size_t(0), false));
+            std::decay_t<std::tuple_element_t<0, modes_t>> k_j;
+            std::decay_t<std::tuple_element_t<1, modes_t>> phi_j;
 
-            if (k_j.size() > nm) {
-                k_j.erase_last(k_j.size() - nm);
-                phi_j.erase_last(phi_j.size() - nm);
+            if (nm > 0) {
+                const auto start = std::chrono::system_clock::now();
+                std::tie(k_j, phi_j) = M::make(_owner.num_workers, nm, verbose(2));
+                const auto end = std::chrono::system_clock::now();
+                verboseln_lv(1, "Modes computing time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
+
+                if (k_j.size() > nm) {
+                    k_j.erase_last(k_j.size() - nm);
+                    phi_j.erase_last(phi_j.size() - nm);
+                }
             }
 
             if (_owner.jobs.has_job("modes")) {

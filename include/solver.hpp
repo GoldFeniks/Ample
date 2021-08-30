@@ -53,6 +53,10 @@ namespace ample {
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto nm = k0.size();
+
+            if (nm == 0)
+                return;
+
             utils::dynamic_assert(k_int.size() == nm && phi_int.size() == nm,
                 "Inputs k0(", nm, "), k_int(", k_int.size(), "), phi_int(", phi_int.size(), ") must have the same size");
 
@@ -137,6 +141,10 @@ namespace ample {
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto nm = k0.size();
+
+            if (nm == 0)
+                return;
+
             utils::dynamic_assert(k_int.size() == nm && phi_int.size() == nm,
                 "Inputs k0(", nm, "), k_int(", k_int.size(), "), phi_int(", phi_int.size(), ") must have the same size");
 
