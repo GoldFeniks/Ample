@@ -155,7 +155,7 @@ namespace ample {
     public:                                                                 \
         const type& field () const {                                        \
             if (!_data_##field.has_value()) {                               \
-            	utils::dynamic_assert(_data.contains(#field),               \
+                utils::dynamic_assert(_data.contains(#field),               \
                     "Missing field " #field);                               \
                 _data_##field = type(_data[#field].template get<type>());   \
             }                                                               \
@@ -420,8 +420,12 @@ namespace ample {
             return times()[_index];
         }
 
+        auto dT() const {
+            return times().back() - times().front();
+        }
+
         auto dt() const {
-            return times().size() >= 2 ? times()[1] - times()[0] : T(0);
+            return dT() / times().size();
         }
 
         void index(const size_t& index) {

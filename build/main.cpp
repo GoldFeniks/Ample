@@ -996,10 +996,13 @@ private:
             }
 
             if (has_sel) {
+                const auto size = has_impulse ? _fft->size() : _source_spectrum.size();
+                const auto coef = 2 * config.dT() / (size * size);
+
                 for (auto& x : *_sel_result)
                     for (auto& y : x)
                         for (auto& z : y)
-                            z *= config.dt();
+                            z *= coef;
 
                 W<types::real_t> writer(_owner._add_extension(_owner.output / "sel"));
                 for (const auto& y : *_sel_result)
@@ -1083,9 +1086,9 @@ private:
                 );
 
                 config.frequencies(
-                    ample::utils::make_vector_i(_fft->size() / 2 + 1,
-                        [dt=config.dt(), size=_fft->size() - 1](const size_t& i) {
-                            return i / (size * dt);
+                    ample::utils::make_vector_i(static_cast<size_t>(_fft->size()) / 2 + 1,
+                        [dT=config.dT()](const size_t& i) {
+                            return i / dT;
                         }
                     )
                 );
@@ -1202,8 +1205,7 @@ private:
                         last_x=config.x0(),
                         li=0,
                         ir=config.reference_index()
-                    ](const auto& mx, const auto& data) mutable {
-                        const auto x = mx + config.x0();
+                    ](const auto& x, const auto& data) mutable {
                         for (; !last.empty() && li < ix.size() && receivers[ix[li]].x <= x; ++li) {
                             const auto& [px, py, pz] = receivers[ix[li]];
                             const auto& [ya, yb] = ample::utils::find_indices(iy, py);
