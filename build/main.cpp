@@ -1148,7 +1148,6 @@ private:
                 write_vector(k0,    W<types::real_t>(_owner._get_filename("k0")));
                 write_vector(phi_s, W<types::real_t>(_owner._get_filename("phi_s")));
             }
-            _owner._meta["phi_s"].push_back(phi_s);
 
             return std::make_tuple(std::move(k_j), std::move(phi_j));
         }        
