@@ -103,49 +103,39 @@ namespace ample::rays {
             );
         }
 
-        template<typename Arg, typename FX, typename FY, typename FT, typename FZ>
-        auto compute(
+        template<typename Arg, typename FX, typename FY, typename FT, typename FZ, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, Arg, Arg>>>
+        void compute(
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
                 const Arg& a0, const Arg& a1, const size_t& na,
                 const FX& fx, const FY& fy, const FT& ft, const FZ& fz, size_t& j, const size_t& nj,
+                C&& callback,
                 const bool& show_progress) {
             const auto fs = dork::rk4<Arg>(Arg(0), l1, nl)(fx, fy, ft, fz);
 
-            types::vector3d_t<Arg> rx(nj, types::vector2d_t<Arg>(na)),
-                                   ry(nj, types::vector2d_t<Arg>(na));
-
-            const auto mesh_l = utils::mesh_1d(Arg(0), l1, nl);
             const auto mesh_a = utils::mesh_1d(a0, a1, na);
 
             utils::progress_bar pbar(nj * na * nl, "Rays", show_progress);
 
             for (j = 0; j < nj; ++j)
                 for (size_t i = 0; i < na; ++i) {
-                    rx[j][i].reserve(nl);
-                    ry[j][i].reserve(nl);
                     auto solver = fs(x0, y0, std::cos(mesh_a[i]), std::sin(mesh_a[i]));
                     for (const auto& [l, x, y, t, z] : solver) {
-                        rx[j][i].emplace_back(x);
-                        ry[j][i].emplace_back(y);
+                        callback(j, i, x, y);
                         pbar.next();
                     }
                 }
-
-            return
-                std::make_tuple(
-                    utils::linear_interpolated_data_2d<Arg>(mesh_a, mesh_l, std::move(rx)),
-                    utils::linear_interpolated_data_2d<Arg>(mesh_a, mesh_l, std::move(ry)));
         }
 
     }// namespace _impl
 
-    template<typename Arg, typename Val>
-    auto compute(
+    template<typename Arg, typename Val, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, Arg, Arg>>>
+    void compute(
             const Arg& x0, const Arg& y0,
             const Arg& l1, const size_t& nl,
             const Arg& a0, const Arg& a1, const size_t& na,
             const utils::linear_interpolated_data_1d<Arg, Val>& k_j,
+            C&& callback,
             const bool& show_progress = false) {
         if constexpr (!std::is_same_v<Arg, Val>) {
             const auto& x = k_j.template get<0>();
@@ -158,7 +148,7 @@ namespace ample::rays {
                 );
             }
 
-            return compute(x0, y0, l1, nl, a0, a1, na, utils::linear_interpolated_data_1d<Arg, Arg>(x, data), show_progress);
+            compute(x0, y0, l1, nl, a0, a1, na, utils::linear_interpolated_data_1d<Arg, Arg>(x, data), callback, show_progress);
         } else {
             types::vector1d_t<Arg> k0(k_j.size());
             for (size_t j = 0; j < k_j.size(); ++j)
@@ -184,16 +174,17 @@ namespace ample::rays {
                     return kd_j[j].point(y);
             };
 
-            return _impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
+            _impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), callback, show_progress);
         }
     }
 
-    template<typename Arg, typename Val>
+    template<typename Arg, typename Val, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, Arg, Arg>>>
     auto compute(
             const Arg& x0, const Arg& y0,
             const Arg& l1, const size_t& nl,
             const Arg& a0, const Arg& a1, const size_t& na,
             const utils::linear_interpolated_data_2d<Arg, Val>& k_j,
+            C&& callback,
             const bool& show_progress = false) {
         if constexpr (!std::is_same_v<Arg, Val>) {
             const auto& x = k_j.template get<0>();
@@ -208,7 +199,7 @@ namespace ample::rays {
                     );
             }
 
-            return compute(x0, y0, l1, nl, a0, a1, na, utils::linear_interpolated_data_2d<Arg, Arg>(x, y, data), show_progress);
+            return compute(x0, y0, l1, nl, a0, a1, na, utils::linear_interpolated_data_2d<Arg, Arg>(x, y, data), callback, show_progress);
         } else {
             types::vector1d_t<Arg> k0(k_j.size());
             for (size_t j = 0; j < k_j.size(); ++j)
@@ -234,8 +225,39 @@ namespace ample::rays {
                     return kdy_j[j].point(x, y);
             };
 
-            return _impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), show_progress);
+            return _impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), callback, show_progress);
         }
+    }
+
+    template<typename Arg, typename KJ>
+    auto compute(
+            const Arg& x0, const Arg& y0,
+            const Arg& l1, const size_t& nl,
+            const Arg& a0, const Arg& a1, const size_t& na,
+            const KJ& k_j,
+            const bool& show_progress = false) {
+        const auto nj = k_j.size();
+
+        types::vector3d_t<Arg> rx(nj, types::vector2d_t<Arg>(na)),
+                               ry(nj, types::vector2d_t<Arg>(na));
+
+        for (size_t j = 0; j < nj; ++j)
+            for (size_t i = 0; i < na; ++i) {
+                rx[j][i].reserve(nl);
+                ry[j][i].reserve(nl);
+            }
+
+        compute(x0, y0, l1, nl, a0, a1, na, k_j, [&](const auto& j, const auto& i, const auto& x, const auto& y) {
+            rx[j][i].emplace_back(x);
+            ry[j][i].emplace_back(y);
+        }, show_progress);
+
+        const auto mesh_a = utils::mesh_1d(a0, a1, na);
+        const auto mesh_l = utils::mesh_1d(Arg(0), l1, nl);
+
+        return std::make_tuple(
+                utils::linear_interpolated_data_2d<Arg>(mesh_a, mesh_l, std::move(rx)),
+                utils::linear_interpolated_data_2d<Arg>(mesh_a, mesh_l, std::move(ry)));
     }
 
 }// namespace ample::rays

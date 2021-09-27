@@ -1142,10 +1142,38 @@ private:
                 const auto nl = config.nl();
                 const auto nm = k_j.size();
 
-                const auto [rx, ry] = ample::rays::compute(
-                    config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, verbose(2));
+                auto writer = W<types::real_t>(_owner._get_filename("rays"));
+                writer.before_write();
 
-                write_rays(rx, ry, nm, _owner.row_step, _owner.col_step, W<types::real_t>(_owner._get_filename("rays")));
+                auto write_rays = [
+                    &writer,
+                    rs=_owner.row_step,
+                    cs=_owner.col_step,
+                    last_i=size_t(0),
+                    last_j=size_t(0),
+                    k=size_t(0)
+                ](const auto& j, const auto& i, const auto& x, const auto& y) mutable {
+                    if (i % rs != 0)
+                        return;
+
+                    if (last_i != i || last_j != j) {
+                        last_i = i;
+                        last_j = j;
+                        k = 0;
+
+                        writer.after_write();
+                        writer.before_write();
+                    }
+
+                    if (k % cs == 0) {
+                        writer.write_one(x);
+                        writer.write_one(y);
+                    }
+
+                    ++k;
+                };
+
+                ample::rays::compute(config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, write_rays, verbose(2));
             }
         }
 
