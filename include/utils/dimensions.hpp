@@ -42,6 +42,23 @@ namespace ample::utils {
         using dim_vector_t = typename dim_vector<T>::type;
 
         template<typename D>
+        struct dim_base {
+
+            using type = D;
+
+        };
+
+        template<typename D>
+        struct dim_base<var_dim<D>> {
+
+            using type = D;
+
+        };
+
+        template<typename D>
+        using dim_base_t = typename dim_base<D>::type;
+
+        template<typename D>
         struct size_getter {
 
             static size_t get(const types::vector1d_t<D>& data) {
@@ -243,9 +260,36 @@ namespace ample::utils {
         template<size_t M>
         static constexpr bool is_variable_dim = is_variable_dim_v<std::tuple_element_t<M, value_t>>;
 
+        template<size_t M>
+        auto cast_to_base(const size_t& index) const {
+            static_assert(is_variable_dim<M>, "Can only cast variable dims");
+            return _get_cast_dimensions<M>(index, std::make_index_sequence<sizeof...(T)>{});
+        }
+
     private:
 
+        template<typename...>
+        friend class dimensions;
+
         data_t _data;
+
+        explicit dimensions(_impl::dim_vector_t<T>... values) : _data(std::move(values)...) {}
+
+        template<size_t M, size_t... I>
+        auto _get_cast_dimensions(const size_t& index, const std::integer_sequence<size_t, I...>&) const {
+            return dimensions<std::conditional_t<I == M, _impl::dim_base_t<std::tuple_element_t<I, value_t>>, std::tuple_element_t<I, value_t>>...>(
+                _get_dim_data<M, I>(index)...
+            );
+        }
+
+        template<size_t M, size_t I>
+        const auto& _get_dim_data(const size_t& index) const {
+            if constexpr (M == I)
+                return std::get<I>(_data)[index];
+            else
+                return std::get<I>(_data);
+        }
+
 
         template<size_t... I>
         void _read_dimensions(const json& data, const std::integer_sequence<size_t, I...>&) {

@@ -54,7 +54,10 @@ namespace ample {
 
                     if constexpr (utils::dimensions<D...>::template is_variable_dim<M>)
                         return utils::make_vector_i(data,
-                            [&dims, &path, &binary](const auto &data, const size_t &i) {
+                            [&dims, &path, &binary](const auto& data, const size_t& i) {
+                                if (data.is_string())
+                                    return read_data<M>(dims, path, data.template get<std::string>(), binary, i);
+
                                 check_size<M>(data.size(), dims.template size<M>(i));
                                 return make_vector<M>(data, dims, path, binary);
                             }
@@ -133,6 +136,16 @@ namespace ample {
                 if (binary)
                     return ample::reader<T>::template binary_read<M, D...>(std::ifstream(file_path, std::ios::binary), dims);
                 return ample::reader<T>::template read<M, D...>(std::ifstream(file_path), dims);
+            }
+
+            template<size_t M>
+            static auto read_data(const utils::dimensions<D...>& dims, const std::filesystem::path& path, const std::string& filename, const bool& binary, const size_t& index) {
+                static_assert(utils::dimensions<D...>::template is_variable_dim<M>, "Cannot read non variable dim data with index");
+
+                const auto file_path = utils::make_file_path(path, filename);
+                if (binary)
+                    return ample::reader<T>::template binary_read<M>(std::ifstream(file_path, std::ios::binary), dims.template cast_to_base<M>(index));
+                return ample::reader<T>::template read<M>(std::ifstream(file_path), dims.template cast_to_base<M>(index));
             }
 
             template<size_t M>
