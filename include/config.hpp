@@ -601,12 +601,6 @@ namespace ample {
                 { "additive_depth", false },
                 { "past_n", size_t(0) },
                 { "border_width", size_t(10) },
-                { "a0", -T(M_PI) / T(4) },
-                { "a1",  T(M_PI) / T(4) },
-                { "na", size_t(90) },
-                { "l0", T(0) },
-                { "l1", T(4000) },
-                { "nl", size_t(4001) },
                 { "init", "greene" },
                 { "tapering",
                     {
