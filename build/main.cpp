@@ -560,20 +560,27 @@ void write_strided(const V& v, const size_t& k, W&& writer) {
 
 template<typename RX, typename RY, typename W>
 void write_rays(const RX& rx, const RY& ry, const size_t& n, const size_t& kr, const size_t& kc, W&& writer) {
-    for (size_t i = 0; i < n; i += kr)
-        for (const auto& [x, y] : feniks::zip(rx[i].data(), ry[i].data())) {
-            writer.before_write();
-            write_strided(feniks::zip(x, y), kc,
-                [&writer](auto begin, const auto& end) mutable {
-                    while (begin != end) {
-                        const auto& [a, b] = *begin;
-                        writer.write_one(a);
-                        writer.write_one(b);
-                        ++begin;
-                    }
-                });
-            writer.after_write();
-        }
+    for (const auto [rx, ry] : feniks::zip(rx, ry))
+        write_strided(feniks::zip(rx.data(), ry.data()), kr,
+            [&writer, &kc](auto begin, const auto& end) mutable {
+                while (begin != end) {
+                    writer.before_write();
+                    const auto& [x, y] = *begin;
+                    write_strided(feniks::zip(x, y), kc,
+                        [&writer](auto begin, const auto& end) mutable {
+                            while (begin != end) {
+                                const auto& [a, b] = *begin;
+                                writer.write_one(a);
+                                writer.write_one(b);
+                                ++begin;
+                            }
+                        }
+                    );
+                    writer.after_write();
+                    ++begin;
+                }
+            }
+        );
 }
 
 template<typename V, typename W>
@@ -1162,7 +1169,7 @@ private:
                 const auto [rx, ry] = ample::rays::compute(
                     config.x0(), config.y_s(), config.l1(), nl, config.a0(), config.a1(), na, k_j, verbose(2));
 
-                write_rays(rx, ry, nm, _owner.row_step, _owner.col_step, ample::utils::binary_writer<types::real_t>(_owner._get_filename("rays")));
+                write_rays(rx, ry, nm, _owner.row_step, _owner.col_step, W<types::real_t>(_owner._get_filename("rays")));
             }
         }
 
