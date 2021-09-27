@@ -231,87 +231,69 @@ void print_values(const char* name, const T& values, std::stringstream& stream) 
     stream << " ];\n";
 }
 
-void print_source_modes(const json& data, std::stringstream& stream) {
-    if (data.count("k0") && data.count("phi_s")) {
-        print_values("Reference wave numbers", data["k0"], stream);
-        print_values("Source modal functions", data["phi_s"], stream);
-    }
+void print_mesh_spec(const std::string& title, const types::real_t& a, const types::real_t& b, const size_t& n, std::stringstream& stream) {
+    stream << "    " << title << ": " << helper.to_string(a) << " <-- " << n << " --> " << helper.to_string(b) << ";\n";
 }
 
-void print_mesh_spec(const std::string& title, const json& a, const json& b, const json& n, std::stringstream& stream) {
-    stream << "    " << title << ": " << helper.to_string(a.get<types::real_t>()) << " <-- " << n << " --> " <<
-        helper.to_string(b.get<types::real_t>()) << ";\n";
-}
+#define PRINT_FIELD(title, field, stream) \
+    if (config.has_##field())             \
+        stream << "    " title ": " << helper.to_string(config.field()) << ";\n";
 
-template<typename T>
-void print_field(const std::string& title, const std::string& field, std::stringstream& stream) {
-    stream << "    " << title << ": " << helper.to_string(config.data()[field].get<T>()) << ";\n";
-}
+#define PRINT_VALUES(title, field, stream) \
+    if (config.has_##field())              \
+        print_values(title, config.field(), stream);
+
+#define PRINT_MESH_SPEC(title, field, stream)                                                \
+    stream << "    " << title << ": " << helper.to_string(config.field ## 0()) << " <-- "    \
+           << config.n##field() << " --> " << helper.to_string(config.field ## 1()) << ";\n";
+
 
 void print_modes(std::stringstream& stream) {
-    const auto& data = config.data();
-
     stream << "Modal parameters.\n";
 
-    print_field<double>("Mode subset", "mode_subset", stream);
-    print_field<size_t>("Points per meter over z", "ppm", stream);
-    print_field<size_t>("Richardson extrapolation order", "ord_rich", stream);
+    PRINT_FIELD("Mode subset", mode_subset, stream);
+    PRINT_FIELD("Points per meter over z", ppm, stream);
+    PRINT_FIELD("Richardson extrapolation order", ord_rich, stream);
 
-    if (config.has_frequencies())
-        print_values("Frequencies, Hz", config.frequencies(), stream);
+    PRINT_VALUES("Frequencies, Hz", frequencies, stream);
+    PRINT_VALUES("Times, s", times, stream);
+    PRINT_VALUES("Source function", source_function, stream);
+    PRINT_VALUES("Source spectrum", source_spectrum, stream);
 
-    if (config.has_times())
-        print_values("Times, s", config.times(), stream);
+    PRINT_FIELD("Points per meter over z", ppm, stream);
+    PRINT_FIELD("Source depth, m", z_s, stream);
+    PRINT_FIELD("Complex-valued modes", complex_modes, stream);
+    PRINT_FIELD("x-independent modes", const_modes, stream);
+    PRINT_FIELD("Use additive depth", additive_depth, stream);
 
-    if (config.has_source_function())
-        print_values("Source function", config.source_function(), stream);
-
-    if (config.has_source_spectrum()) 
-        print_values("Source spectrum", config.source_spectrum(), stream);
-
-    print_field<types::real_t>("Points per meter over z", "ppm", stream);
-    print_field<types::real_t>("Source depth, m", "z_s", stream);
-    print_field<bool>("Complex-valued modes", "complex_modes", stream);
-    print_field<bool>("x-independent modes", "const_modes", stream);
-    print_field<bool>("Use additive depth", "additive_depth", stream);
-
-    stream << "    Bottom layers (top_speed -> bottom_speed; depth; density):\n";
-    for (const auto [c1, c2, z, r] : feniks::zip(
-        data["bottom_c1s"],
-        data["bottom_c2s"],
-        data["bottom_layers"],
-        data["bottom_rhos"]
-    ))
-        stream << "        " << helper.to_string(c1.get<types::real_t>()) << " -> " << 
-                                helper.to_string(c2.get<types::real_t>()) << "; " << 
-                                helper.to_string( z.get<types::real_t>()) << "; " << 
-                                helper.to_string( r.get<types::real_t>()) << ";\n";
-
-    stream << "    Number of water layers: " << data["n_layers"] << ";\n";
-    print_values("Beta parameters", data["betas"], stream);
-
-    const auto nm = data["max_mode"].get<size_t>();
-    stream << "    Maximal number of modes: " << (nm == static_cast<size_t>(-1) ? "All" : helper.to_string(nm)) << ";\n";
-
-    const auto mn = data["n_modes"].get<size_t>();
-    stream << "    Required number of modes: " << (mn == static_cast<size_t>(-1) ? "All" : helper.to_string(mn)) << ";\n";
-
-    if (config.const_modes())
-        stream << "    Number of points over y: " << 
-            (data.count("mny") ? data["mny"].get<size_t>() : config.bathymetry().y().size()) << ";\n";
-    else {
-        size_t nx, ny;
-        if (data.count("mnx") && data.count("mny")) {
-            nx = data["mnx"].get<size_t>();
-            ny = data["mny"].get<size_t>();
-        } else {
-            nx = config.bathymetry().x().size();
-            ny = config.bathymetry().y().size();
-        }
-        stream << "    Number of points over x: " << nx << ";\n    Number of points over y: " << ny << ";\n";
+    if (config.has_bottom_c1s() && config.has_bottom_c2s() && config.has_bottom_layers() && config.has_bottom_rhos()) {
+        stream << "    Bottom layers (top_speed -> bottom_speed; depth; density):\n";
+        for (const auto [c1, c2, z, r] : feniks::zip(
+            config.bottom_c1s(),
+            config.bottom_c2s(),
+            config.bottom_layers(),
+            config.bottom_rhos()
+        ))
+            stream << "        " << helper.to_string(c1) << " -> " << 
+                                    helper.to_string(c2) << "; " << 
+                                    helper.to_string( z) << "; " << 
+                                    helper.to_string( r) << ";\n";
     }
 
-    print_source_modes(data, stream);
+    PRINT_FIELD("Number of water layers", n_layers, stream);
+    PRINT_VALUES("Beta parameters", betas, stream);
+
+    const auto nm = config.max_mode();
+    stream << "    Maximal number of modes: " << (nm == static_cast<size_t>(-1) ? "All" : helper.to_string(nm)) << ";\n";
+
+    const auto mn = config.n_modes();
+    stream << "    Required number of modes: " << (mn == static_cast<size_t>(-1) ? "All" : helper.to_string(mn)) << ";\n";
+
+    if (config.has_bathymetry())
+        if (config.const_modes())
+            stream << "    Number of points over y: " << config.mny() << ";\n";
+        else
+            stream << "    Number of points over x: " << config.mnx() << ";\n    Number of points over y: " << config.mny() << ";\n";
 
     stream << '\n';
 }
@@ -326,10 +308,8 @@ void print_tapering(std::stringstream& stream) {
 }
 
 void print_initial_conditions(std::stringstream& stream) {
-    const auto& data = config.data();
-
     stream << "Initial conditions parameters.\n    Type: ";
-    const auto type = data["init"].get<std::string>();
+    const auto type = config.init();
 
     if (type == "greene")
         stream << "Greene source";
@@ -337,15 +317,15 @@ void print_initial_conditions(std::stringstream& stream) {
         stream << "Gaussian source";
     else if (type == "ray_simple") {
         stream << "Ray-based source assuming homogeneous medium;\n";
-        print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
+        PRINT_MESH_SPEC("Angle mesh", a, stream);
         print_tapering(stream);
         stream << '\n';
         return;
     }
     else if (type == "ray") {
         stream << "Ray-based source;\n";
-        print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
-        print_mesh_spec("Natural parameter mesh", data["l0"], data["l1"], data["nl"], stream);
+        PRINT_MESH_SPEC("Angle mesh", a, stream);
+        PRINT_MESH_SPEC("Natural parameter mesh", l, stream);
         print_tapering(stream);
         stream << '\n';
         return;
@@ -357,8 +337,6 @@ void print_initial_conditions(std::stringstream& stream) {
 }
 
 void print_solver(std::stringstream& stream) {
-    const auto& data = config.data();
-
     stream << "Solver parameters:\n";
 
     if (config.has_receivers()) {
@@ -370,14 +348,11 @@ void print_solver(std::stringstream& stream) {
         );
     }
 
-    print_field<types::real_t>("Source z coordinate", "y_s", stream);
-    print_field<size_t>("Width of smooth border over edges", "border_width", stream);
+    PRINT_FIELD("Source z coordinate", y_s, stream);
+    PRINT_FIELD("Width of smooth border over edges", border_width, stream);
 
-    const auto pn = data["past_n"].get<size_t>();
-    stream << "    Size of border convolution: "  << (pn == 0 ? "Full" : helper.to_string(pn)) << ";\n";
-
-    print_mesh_spec("x mesh", data["x0"], data["x1"], data["nx"], stream);
-    print_mesh_spec("y mesh", data["y0"], data["y1"], data["ny"], stream);
+    PRINT_MESH_SPEC("x mesh", x, stream);
+    PRINT_MESH_SPEC("y mesh", y, stream);
 
     const auto& description = config.coefficients();
     stream << "    Root approximation coefficients:\n" << 
@@ -404,11 +379,9 @@ void verbose_config_field_group_parameters(const field_group& group) {
         print_initial_conditions(stream);
 
     if (group & field_group::rays) {
-        const auto& data = config.data();
-
         stream << "Rays parameters:\n";
-        print_mesh_spec("Angle mesh", data["a0"], data["a1"], data["na"], stream);
-        print_mesh_spec("Natural parameter mesh", data["l0"], data["l1"], data["nl"], stream);
+        PRINT_MESH_SPEC("Angle mesh", a, stream);
+        PRINT_MESH_SPEC("Natural parameter mesh", l, stream);
     }
 
     std::cout << stream.str();
