@@ -162,7 +162,7 @@ namespace ample {
             return _data_##field.value();                                   \
         }                                                                   \
         bool has_##field() const {                                          \
-            return _data_##field.has_value();                               \
+            return _data_##field.has_value() || _data.contains(#field);     \
         }                                                                   \
         void field(const type& value) {                                     \
             _data_##field = value;                                          \
@@ -535,7 +535,7 @@ namespace ample {
                 _copy_files(it["values"], _get_dim_count(it["dimensions"]), _path,
                     output / it["type"].template get<std::string>(), it.contains("binary") && it["binary"].template get<bool>());
 
-            if (!_data.count("mnx") || !_data.count("mny")) {
+            if (!(_data.count("mnx") && _data.count("mny")) && has_bathymetry()) {
                 out["mnx"] = bathymetry().x().size();
                 out["mny"] = bathymetry().y().size();
             }

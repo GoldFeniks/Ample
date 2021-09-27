@@ -5,8 +5,10 @@
 #include <sstream>
 #include <cstddef>
 #include <iterator>
+#include <optional>
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 #include <type_traits>
 #include "types.hpp"
 
@@ -347,6 +349,30 @@ namespace ample::utils {
         size_t _n = 0;
         T* _values = nullptr;
         bool _has_value = false;
+
+    };
+
+    template<typename T>
+    class lazy_value {
+
+    public:
+
+        lazy_value(std::function<T()> getter) : _getter(std::move(getter)) {}
+
+        const T& get() const {
+            if (!_value.has_value())
+                _value = _getter();
+            return _value.value();
+        }
+
+        const T& operator()() const {
+            return get();
+        }
+
+    private:
+
+        mutable std::optional<T> _value;
+        std::function<T()> _getter;
 
     };
 

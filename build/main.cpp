@@ -673,23 +673,23 @@ public:
 
         _meta["computation_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.;
 
-        const auto dimx = _dimension(config.x0(), config.x1(), (config.nx() - 1) / row_step + 1);
-        const auto dimy = _dimension(config.y0(), config.y1(), (config.ny() - 1) / col_step + 1);
-        const auto dimz = _dimension(config.z0(), config.z1(), config.nz());
-        const auto dimm = _dimensions(_n_modes);
+        const auto dimx = ample::utils::lazy_value<json>([&]() { return _dimension(config.x0(), config.x1(), (config.nx() - 1) / row_step + 1); });
+        const auto dimy = ample::utils::lazy_value<json>([&]() { return _dimension(config.y0(), config.y1(), (config.ny() - 1) / col_step + 1); });
+        const auto dimz = ample::utils::lazy_value<json>([&]() { return _dimension(config.z0(), config.z1(), config.nz()); });
+        const auto dimm = ample::utils::lazy_value<json>([&]() { return _dimensions(_n_modes); });
 
         const auto files = ample::utils::make_vector(_meta["f"].get<types::vector1d_t<types::real_t>>(),
             [this](const auto& value) { return _add_extension(helper.to_string(value)); });
 
         if (jobs.has_job("sel"))
-            _meta["outputs"].push_back(_get_meta_for("sel", { dimx, dimy, dimz }, _add_extension(std::string("sel"))));
+            _meta["outputs"].push_back(_get_meta_for("sel", { dimx(), dimy(), dimz() }, _add_extension(std::string("sel"))));
 
         if (jobs.has_job("init"))
-            _save_meta_for("init", { dimm, dimy }, files);        
+            _save_meta_for("init", { dimm(), dimy() }, files);        
 
         if (jobs.has_job("rays"))
             _save_meta_for("rays", { 
-                    dimm,
+                    dimm(),
                     _dimension(config.a0(), config.a1(), (config.na() - 1) / row_step + 1),
                     _dimension(config.l0(), config.l1(), (config.nl() - 1) / col_step + 1)
                 }, files
@@ -699,21 +699,21 @@ public:
             if (config.const_modes()) {
                 _save_meta_for("phi_j",
                    {
-                       dimm,
+                       dimm(),
                        _dimension(config.y0(), config.y1(), config.mny()),
                        _dimension(config.z0(), config.z1(), config.mnz())
                    }, files
                 );
                 _save_meta_for("k_j", config.complex_modes() ? "complex_k_j" : "k_j",
                    {
-                       dimm,
+                       dimm(),
                        _dimension(config.y0(), config.y1(), config.mny())
                    }, files
                 );
             } else {
                 _save_meta_for("phi_j",
                    {
-                       dimm,
+                       dimm(),
                        _dimension(config.x0(), config.x1(), config.mnx()),
                        _dimension(config.y0(), config.y1(), config.mny()),
                        _dimension(config.z0(), config.z1(), config.mnz())
@@ -721,15 +721,15 @@ public:
                 );
                 _save_meta_for("k_j", config.complex_modes() ? "complex_k_j" : "k_j",
                    {
-                       dimm,
+                       dimm(),
                        _dimension(config.x0(), config.x1(), config.mnx()),
                        _dimension(config.y0(), config.y1(), config.mny())
                    }, files
                 );
             }
 
-            _save_meta_for("k0", config.complex_modes() ? "complex_k0" : "k0", { dimm }, files);
-            _save_meta_for("phi_s", { dimm }, files);
+            _save_meta_for("k0", config.complex_modes() ? "complex_k0" : "k0", { dimm() }, files);
+            _save_meta_for("phi_s", { dimm() }, files);
         }
 
         if (jobs.has_job("impulse"))
@@ -740,7 +740,7 @@ public:
             );
 
         if (jobs.has_job("solution"))
-            _save_meta_for("solution", { _n_modes.size(), dimx, dimy, dimz }, files);
+            _save_meta_for("solution", { _n_modes.size(), dimx(), dimy(), dimz() }, files);
 
         std::ofstream out(output / "meta.json");
         out << std::setw(4) << _meta << std::endl;
@@ -950,10 +950,13 @@ private:
 
                 const auto [k0, phi_s] = M::make_source();
                 const auto [k_j, phi_j] = _perform_modes(k0, phi_s);
+
+                _perform_rays(k_j, phi_j);
+
+                if (!(has_impulse || has_sel || _owner.jobs.has_job("solution") || _owner.jobs.has_job("init")))
+                    continue;
                 
                 const auto init = _perform_init(k0, phi_s, k_j);
-
-                _perform_rays(k_j, phi_j);                
 
                 _perform_sel(init, k0, k_j, phi_j);
 
