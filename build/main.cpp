@@ -658,8 +658,8 @@ public:
     size_t row_step, col_step, num_workers, buff_size;
     std::filesystem::path output, config_path;
 
-    void command_line_arguments(const int argc, const char* argv[]) {
-        _meta["command_line_arguments"] = types::vector1d_t<const char*>(argv, argv + argc);
+    void command_line_arguments(types::vector1d_t<std::string> args) {
+        _meta["command_line_arguments"] = std::move(args);
     }
 
     void perform() {
@@ -1292,10 +1292,23 @@ void validate(boost::any& v,
     }
 }
 
+#ifdef WIN32
+#include "boost/locale.hpp"
+
+int wmain(int argc, const wchar_t* argv[]) {
+    types::vector1d_t<std::string> args;
+    for (int i = 0; i < argc; ++i)
+        args.emplace_back(boost::locale::conv::utf_to_utf<char>(std::wstring(argv[i])));
+#else
 int main(int argc, const char* argv[]) {
+    types::vector1d_t<std::string> args;
+    for (size_t i = 0; i < argc; ++i)
+        args.emplace_back(std::string(argv[i]));
+#endif
     try {
         jobs_config jobs_config;
-        jobs_config.command_line_arguments(argc, argv);
+        jobs_config.command_line_arguments(args);
+        args.erase(args.begin());
 
         po::positional_options_description positional;
         positional.add("jobs", -1);
@@ -1325,7 +1338,7 @@ int main(int argc, const char* argv[]) {
         options.add(generic).add(output).add(computation);
 
         po::variables_map vm;
-        po::store(po::command_line_parser(argc, argv).positional(positional).options(options).run(), vm);
+        po::store(po::command_line_parser(args).positional(positional).options(options).run(), vm);
         po::notify(vm);
 
         if (vm.count("help")) {
