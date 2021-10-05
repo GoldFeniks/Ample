@@ -14,7 +14,7 @@ Just use your favorite (or not) package manager. Nice isn't it?
 
 [vcpkg](https://github.com/microsoft/vcpkg) is highly recommended. You can use something like
 ```powershell
-PS> ./vcpkg install --triplet x64-windows boost-program-options fftw3 nlohmann-json
+PS> ./vcpkg install --triplet x64-windows boost-program-options fftw3
 ```
 
 # Building 

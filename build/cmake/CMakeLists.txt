@@ -16,7 +16,11 @@ set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR};${CMAKE_MODULE_PATH}")
 set(PROJECT_DIR ${PROJECT_SOURCE_DIR}/../../)
 
 add_subdirectory(${PROJECT_DIR}/modules/CAMBALA/src/normal_modes ${CMAKE_BINARY_DIR}/normal_modes)
-set_target_properties(normal_modes_sample alglib PROPERTIES EXCLUDE_FROM_ALL ON EXCLUDE_FROM_DEFAULT_BUILD ON)
+
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(${PROJECT_DIR}/modules/json ${CMAKE_BINARY_DIR}/json)
+
+set_target_properties(normal_modes_sample alglib nlohmann_json PROPERTIES EXCLUDE_FROM_ALL ON EXCLUDE_FROM_DEFAULT_BUILD ON)
 
 # FFTW3 is currently broken on Linux
 if(WIN32)
@@ -31,7 +35,6 @@ if(MSVC)
 endif()
 
 find_package(Threads REQUIRED)
-find_package(nlohmann_json REQUIRED)
 find_package(Boost 1.69 COMPONENTS program_options REQUIRED)
 
 include_directories(

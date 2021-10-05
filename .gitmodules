@@ -10,3 +10,6 @@
 [submodule "modules/zip"]
 	path = modules/zip
 	url = https://github.com/GoldFeniks/zip.git
+[submodule "modules/json"]
+	path = modules/json
+	url = https://github.com/nlohmann/json.git
