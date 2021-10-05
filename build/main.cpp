@@ -231,10 +231,6 @@ void print_values(const char* name, const T& values, std::stringstream& stream) 
     stream << " ];\n";
 }
 
-void print_mesh_spec(const std::string& title, const types::real_t& a, const types::real_t& b, const size_t& n, std::stringstream& stream) {
-    stream << "    " << title << ": " << helper.to_string(a) << " <-- " << n << " --> " << helper.to_string(b) << ";\n";
-}
-
 #define PRINT_FIELD(title, field, stream) \
     if (config.has_##field())             \
         stream << "    " title ": " << helper.to_string(config.field()) << ";\n";
@@ -245,7 +241,10 @@ void print_mesh_spec(const std::string& title, const types::real_t& a, const typ
 
 #define PRINT_MESH_SPEC(title, field, stream)                                                \
     stream << "    " << title << ": " << helper.to_string(config.field ## 0()) << " <-- "    \
-           << config.n##field() << " --> " << helper.to_string(config.field ## 1()) << ";\n";
+           << (config.has_n##field()                                                          \
+              ? helper.to_string(config.n##field())                                          \
+              : "")                                                                          \
+           << " --> " << helper.to_string(config.field ## 1()) << ";\n";
 
 
 void print_modes(std::stringstream& stream) {
