@@ -368,6 +368,7 @@ namespace ample {
         CONFIG_DATA_FIELD(z_s, T)
         CONFIG_DATA_FIELD(y_s, T)
         CONFIG_DATA_FIELD(n_layers, size_t)
+        CONFIG_DATA_FIELD(c_win, T)
         CONFIG_DATA_FIELD(bottom_rhos, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(betas, types::vector1d_t<T>)
         CONFIG_DATA_FIELD(bottom_layers, types::vector1d_t<T>)
@@ -590,6 +591,7 @@ namespace ample {
                 { "ord_rich", size_t(3) },
                 { "x0", T(0) },
                 { "y_s", T(0) },
+                { "c_win", T(1500) },
                 { "n_layers", size_t(1) },
                 { "bottom_layers", { T(500) } },
                 { "bottom_c1s", { T(1700) } },

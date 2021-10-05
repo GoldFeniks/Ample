@@ -996,13 +996,9 @@ private:
             }
 
             if (has_impulse) {
-                const auto h = config.bathymetry().point(0, config.y_s());
+                const auto h  = config.bathymetry().point(0, config.y_s());
                 const auto cs = config.hydrology().line(0, 0, h, static_cast<size_t>(h));
-                const auto cm = std::max({
-                    *std::max_element(cs.begin(), cs.end()),
-                    *std::max_element(config.bottom_c1s().begin(), config.bottom_c1s().end()),
-                    *std::max_element(config.bottom_c2s().begin(), config.bottom_c2s().end())
-                });
+                const auto cw = config.c_win();
 
                 auto omeg = ample::utils::mesh_1d(0., 1 / config.dt(), _fft->size());
                 std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
@@ -1014,7 +1010,7 @@ private:
                 types::vector2d_t<types::real_t> impulse(nr, types::vector1d_t<types::real_t>(_fft->size()));
 
                 for (size_t i = 0; i < _impulse_result->size(); ++i) {
-                    const auto d = (tau[i] = std::hypot(receivers[i].x, receivers[i].y) / cm);
+                    const auto d = (tau[i] = std::hypot(receivers[i].x, receivers[i].y) / cw);
 
                     auto zip = feniks::zip((*_impulse_result)[i], omeg);
                     std::transform(zip.begin(), zip.end(), _fft->backward_data(),
