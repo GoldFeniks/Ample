@@ -103,7 +103,7 @@ namespace ample::rays {
             );
         }
 
-        template<typename Arg, typename FX, typename FY, typename FT, typename FZ, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, Arg, Arg>>>
+        template<typename Arg, typename FX, typename FY, typename FT, typename FZ, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, size_t, Arg, Arg, Arg, Arg>>>
         void compute(
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
@@ -117,11 +117,12 @@ namespace ample::rays {
 
             utils::progress_bar pbar(nj * na * nl, "Rays", show_progress);
 
+            size_t k = 0;
             for (j = 0; j < nj; ++j)
-                for (size_t i = 0; i < na; ++i) {
+                for (size_t i = 0; i < na; ++i, ++k) {
                     auto solver = fs(x0, y0, std::cos(mesh_a[i]), std::sin(mesh_a[i]));
                     for (const auto& [l, x, y, t, z] : solver) {
-                        callback(j, i, x, y);
+                        callback(j, i, k, x, y, mesh_a[i], l);
                         pbar.next();
                     }
                 }
@@ -129,7 +130,7 @@ namespace ample::rays {
 
     }// namespace _impl
 
-    template<typename Arg, typename Val, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, Arg, Arg>>>
+    template<typename Arg, typename Val, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, size_t, Arg, Arg, Arg, Arg>>>
     void compute(
             const Arg& x0, const Arg& y0,
             const Arg& l1, const size_t& nl,
@@ -178,7 +179,7 @@ namespace ample::rays {
         }
     }
 
-    template<typename Arg, typename Val, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, Arg, Arg>>>
+    template<typename Arg, typename Val, typename C, typename = std::enable_if_t<std::is_invocable_v<C, size_t, size_t, size_t, Arg, Arg, Arg, Arg>>>
     auto compute(
             const Arg& x0, const Arg& y0,
             const Arg& l1, const size_t& nl,
@@ -247,7 +248,7 @@ namespace ample::rays {
                 ry[j][i].reserve(nl);
             }
 
-        compute(x0, y0, l1, nl, a0, a1, na, k_j, [&](const auto& j, const auto& i, const auto& x, const auto& y) {
+        compute(x0, y0, l1, nl, a0, a1, na, k_j, [&](const auto& j, const auto& i, const auto& k, const auto& x, const auto& y, const auto& a, const auto& l) {
             rx[j][i].emplace_back(x);
             ry[j][i].emplace_back(y);
         }, show_progress);
