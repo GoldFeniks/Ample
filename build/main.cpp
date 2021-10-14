@@ -672,8 +672,8 @@ public:
 
         _meta["computation_time"] = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.;
 
-        const auto dimx = ample::utils::lazy_value<json>([&]() { return _dimension(config.x0(), config.x1(), (config.nx() - 1) / row_step + 1); });
-        const auto dimy = ample::utils::lazy_value<json>([&]() { return _dimension(config.y0(), config.y1(), (config.ny() - 1) / col_step + 1); });
+        const auto dimx = ample::utils::lazy_value<json>([&]() { return _dimension(config.x0(), config.x1(), config.nx(), row_step); });
+        const auto dimy = ample::utils::lazy_value<json>([&]() { return _dimension(config.y0(), config.y1(), config.ny(), col_step); });
         const auto dimz = ample::utils::lazy_value<json>([&]() { return _dimension(config.z0(), config.z1(), config.nz()); });
         const auto dimm = ample::utils::lazy_value<json>([&]() { return _dimensions(_n_modes); });
 
@@ -689,8 +689,8 @@ public:
         if (jobs.has_job("rays"))
             _save_meta_for("rays", { 
                     dimm(),
-                    _dimension(config.a0(), config.a1(), (config.na() - 1) / row_step + 1),
-                    _dimension(config.l0(), config.l1(), (config.nl() - 1) / col_step + 1)
+                    _dimension(config.a0(), config.a1(), config.na(), row_step),
+                    _dimension(config.l0(), config.l1(), config.nl(), col_step)
                 }, files
             );
 
@@ -777,6 +777,13 @@ private:
                 }
             }
         };
+    }
+
+    static json _dimension(const types::real_t& a, const types::real_t& b, const size_t& n, const size_t& step) {
+        const auto h = (b - a) / (n - 1);
+        const auto m = (n - 1) / step + 1;
+
+        return _dimension(a, a + h * step * (m - 1), m);
     }
 
     void _save_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
