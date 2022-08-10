@@ -173,7 +173,24 @@ namespace ample::utils {
             const auto me = (es - he * 3600) / 60;
             const auto se = es - he * 3600 - me * 60;
 
-            _k = sprintf(_buffer, "| %zu/%zu [ %02zu:%02zu:%02zu<%02zu:%02zu:%02zu ] %.2f it/s ", _cur, _n, he, me, se, ht, mt, st, ips);
+            const auto* units = "it/s";
+            auto value = ips;
+
+            if (ips > 0 && ips < 1.) {
+                value = 1. / ips;
+
+                if (value < 60)
+                    units = "s/it";
+                else if (value < 3600) {
+                    units = "m/it";
+                    value /= 60;
+                } else {
+                    units = "h/it";
+                    value /= 3600;
+                }
+            }
+
+            _k = sprintf(_buffer, "| %zu/%zu [ %02zu:%02zu:%02zu<%02zu:%02zu:%02zu ] %.2f %s ", _cur, _n, he, me, se, ht, mt, st, value, units);
 
             write();
 
