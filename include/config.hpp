@@ -30,7 +30,8 @@ namespace ample {
 
     namespace _impl {
 
-        HAS_CONCEPT(can_make_mesh, utils::mesh_1d(std::declval<C>(), std::declval<C>(), size_t(0)), typename = void)
+        template<typename T>
+        concept can_make_mesh = requires (T a, T b) { utils::mesh_1d(a, b, size_t(0)); };
 
         template<typename T, typename... D>
         struct input_data {
@@ -90,7 +91,7 @@ namespace ample {
                                     return result;
                                 }
 
-                                if constexpr (can_make_mesh_v<T>)
+                                if constexpr (can_make_mesh<T>)
                                     if (data.is_object()) {
                                         utils::dynamic_assert(data.contains("a") && data.contains("b") && data.size() == 2 &&
                                                               data["a"].is_number() && data["b"].is_number(),
@@ -104,7 +105,7 @@ namespace ample {
                             }
                         );
                     } else {
-                        if constexpr (can_make_mesh_v<T>)
+                        if constexpr (can_make_mesh<T>)
                             if (data.is_object()) {
                                 utils::dynamic_assert(data.contains("a") && data.contains("b") && data.size() == 2,
                                                       data["a"].is_number() && data["b"].is_number(),

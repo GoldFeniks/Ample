@@ -10,6 +10,7 @@
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/assert.hpp"
+#include "threads/pool.hpp"
 #include "utils/callback.hpp"
 #include "utils/interpolation.hpp"
 
@@ -119,15 +120,21 @@ namespace ample {
             const auto hy = (y1 - y0) / (ny - 1);
             const auto depth = _config.bathymetry().line(x, y0, y1, ny);
 
-            _compute(ny, num_workers, [&](const size_t i0, const size_t i1, NormalModes n_m) {
-                    auto y = y0 + hy * i0;
-                    for (size_t i = i0; i < i1; ++i, y += hy) {
-                        _point(n_m, x, y, depth[i], c);
-                        callback(std::as_const(n_m), std::as_const(i));
-                    }
-                }
-            );
+            threads::pool<size_t, NormalModes> pool(num_workers);
+            pool.pause();
 
+            pool.add_resource<1>(_n_m);
+
+            const auto& task = pool.add([&](const size_t& i, NormalModes& n_m) {
+                _point(n_m, x, y0 + hy * i, depth[i], c);
+                callback(std::as_const(n_m), std::as_const(i));
+            });
+
+            for (size_t i = 0; i < ny; ++i)
+                task.push(i, threads::resource);
+
+            pool.resume();
+            pool.join();
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&>>>
@@ -231,17 +238,22 @@ namespace ample {
             const auto hy = (y1 - y0) / (ny - 1);
             const auto depth = _config.bathymetry().field(x0, x1, nx, y0, y1, ny);
 
-            _compute(ny, num_workers, [&](const size_t j0, const size_t j1, NormalModes n_m) {
-                    auto x = x0;
-                    for (size_t i = 0; i < nx; ++i, x += hx) {
-                        auto y = y0 + j0 * hy;
-                        for (size_t j = j0; j < j1; ++j, y += hy) {
-                            _point(n_m, x, y, depth[i][j], c);
-                            callback(std::as_const(n_m), std::as_const(i), std::as_const(j));
-                        }
-                    }
-                }
-            );
+            threads::pool<size_t, size_t, NormalModes> pool(num_workers);
+            pool.pause();
+
+            pool.add_resource<2>(_n_m);
+
+            const auto& task = pool.add([&](const size_t& i, const size_t& j, NormalModes& n_m) {
+                _point(n_m, x0 + hx * i, y0 + hy * j, depth[i][j], c);
+                callback(std::as_const(n_m), std::as_const(i), std::as_const(j));
+            });
+
+            for (size_t i = 0; i < nx; ++i)
+                for (size_t j = 0; j < ny; ++j)
+                    task.push(i, j, threads::resource);
+
+            pool.resume();
+            pool.join();
         }
 
         template<typename C, typename = std::enable_if_t<std::is_invocable_v<C, const NormalModes&, const size_t&, const size_t&>>>
