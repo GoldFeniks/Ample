@@ -255,9 +255,9 @@ void print_modes(std::stringstream& stream) {
             config.bottom_layers(),
             config.bottom_rhos()
         ))
-            stream << "        " << helper.to_string(c1) << " -> " << 
-                                    helper.to_string(c2) << "; " << 
-                                    helper.to_string( z) << "; " << 
+            stream << "        " << helper.to_string(c1) << " -> " <<
+                                    helper.to_string(c2) << "; " <<
+                                    helper.to_string( z) << "; " <<
                                     helper.to_string( r) << ";\n";
     }
 
@@ -336,7 +336,7 @@ void print_solver(std::stringstream& stream) {
     PRINT_MESH_SPEC("y mesh", y, stream);
 
     const auto& description = config.coefficients();
-    stream << "    Root approximation coefficients:\n" << 
+    stream << "    Root approximation coefficients:\n" <<
         "        type: " << description.type() << ";\n" <<
         "        n: " << helper.to_string(description.parameters()["n"].get<size_t>()) << ";\n" <<
         "        m: " << helper.to_string(THIS_OR_THAT(description.parameters(), size_t, "n", "m")) << ";\n";
@@ -672,10 +672,10 @@ public:
             _meta["outputs"].push_back(_get_meta_for("sel", { dimx(), dimy(), dimz() }, _add_extension(std::string("sel"))));
 
         if (jobs.has_job("init"))
-            _save_meta_for("init", { dimm(), dimy() }, files);        
+            _save_meta_for("init", { dimm(), dimy() }, files);
 
         if (jobs.has_job("rays"))
-            _save_meta_for("rays", { 
+            _save_meta_for("rays", {
                     dimm(),
                     _dimension(config.a0(), config.a1(), config.na(), row_step),
                     _dimension(config.l0(), config.l1(), config.nl(), col_step)
@@ -790,7 +790,7 @@ private:
         const auto filename = output / path / "meta.json";
         std::ofstream out(filename);
 
-        out << std::setw(4) << _get_meta_for(type, dimensions, files);        
+        out << std::setw(4) << _get_meta_for(type, dimensions, files);
 
         _meta["outputs"].push_back((filename.parent_path().filename() / filename.filename()).generic_string());
     }
@@ -804,7 +804,7 @@ private:
         };
     }
 
-    json _get_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {        
+    json _get_meta_for(const std::string& type, const json& dimensions, const types::vector1d_t<std::string>& files) {
         return {
             { "type", type },
             { "dimensions", dimensions },
@@ -941,7 +941,7 @@ private:
 
                 const auto f = config.f();
                 if ((
-                        _source_spectrum.has_value() && std::abs(_source_spectrum[fi]) < _max * config.tolerance() || 
+                        _source_spectrum.has_value() && std::abs(_source_spectrum[fi]) < _max * config.tolerance() ||
                         config.sel_strict()
                     ) && !(config.sel_strict() && f0 <= f && f1 >= f))
                     continue;
@@ -1076,9 +1076,9 @@ private:
                 std::memcpy(_fft->forward_data(), config.source_function().data(), _fft->size() * sizeof(types::real_t));
                 _fft->execute_forward();
 
-                std::transform(std::as_const(*_fft).backward_data(), _fft->backward_data_end(), _fft->backward_data(), 
-                    [](const auto& v) { 
-                        return std::conj(v); 
+                std::transform(std::as_const(*_fft).backward_data(), _fft->backward_data_end(), _fft->backward_data(),
+                    [](const auto& v) {
+                        return std::conj(v);
                     }
                 );
 
@@ -1147,7 +1147,7 @@ private:
             }
 
             return std::make_tuple(std::move(k_j), std::move(phi_j));
-        }        
+        }
 
         template<typename KJ, typename PJ>
         void _perform_rays(const KJ& k_j, const PJ& phi_j) {

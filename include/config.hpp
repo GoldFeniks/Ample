@@ -482,9 +482,9 @@ namespace ample {
                 const auto& k_j = std::get<types::vector1d_t<utils::linear_interpolated_data_2d<T, V>>>(_k_j)[_index];
                 const auto& phi_j = _phi_j.value()[_index];
                 utils::dynamic_assert(k_j.size() >= c,
-                      "Insufficient number of modes. Expect no less than ", c, ", but got ", k_j.size());
+                      "Insufficient number of modes. Expected no less than ", c, ", but got ", k_j.size());
                 utils::dynamic_assert(phi_j.size() >= c,
-                      "Insufficient number of modes. Expect no less than ", c, ", but got ", phi_j.size());
+                      "Insufficient number of modes. Expected no less than ", c, ", but got ", phi_j.size());
                 return std::make_tuple(k_j, phi_j);
             }
 
