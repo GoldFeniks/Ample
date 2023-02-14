@@ -21,7 +21,7 @@ namespace ample::utils {
 
         public:
 
-            using iterator_category = std::output_iterator_tag;
+            using iterator_category = std::input_iterator_tag;
             using value_type        = typename It::value_type;
             using difference_type   = typename It::difference_type;
             using pointer           = typename It::pointer;
@@ -279,8 +279,8 @@ namespace ample::utils {
     template<typename It>
     auto stride(It begin, It end, const size_t& k) {
         return std::make_tuple(
-                _impl::stride_iterator(begin, end, k),
-                _impl::stride_iterator(end, end, k)
+            _impl::stride_iterator(begin, end, k),
+            _impl::stride_iterator(end, end, k)
         );
     }
 
