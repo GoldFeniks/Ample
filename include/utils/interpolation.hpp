@@ -8,6 +8,7 @@
 #include "types.hpp"
 #include "utils.hpp"
 #include "assert.hpp"
+#include "concepts.hpp"
 #include "delaunay.hpp"
 #include "feniks/zip.hpp"
 
@@ -15,7 +16,8 @@ namespace ample::utils {
 
     namespace _impl {
 
-        HAS_METHOD(prepare)
+        template<typename T, typename... Args>
+        concept has_prepare = requires (T value, const Args&... args) { value.prepare(args...); };
 
         template<typename T, typename C>
         auto fill_bilinear_interpolation_coefficients(const T& a, const T& b, const size_t n, const C& coords) {
@@ -90,7 +92,7 @@ namespace ample::utils {
 
             template<typename T, typename C>
             static auto line_point(const T& a, const T& b, const C& x0, const C& x1, const C& x) {
-                return a + (b - a) * (x - x0) / (x1 - x0);
+                return x0 != x1 ? a + (b - a) * (x - x0) / (x1 - x0) : a;
             }
 
             /**
@@ -449,7 +451,7 @@ namespace ample::utils {
             types::vector1d_t<I> _interpolators;
 
             void prepare() {
-                if constexpr (has_prepare_v<I, std::tuple<Args...>>)
+                if constexpr (has_prepare<I, std::tuple<Args...>>)
                     I::prepare(_common_data);
             }
 
@@ -530,10 +532,34 @@ namespace ample::utils {
 
     }// namespace _impl
 
+    template<typename I>
+    using interpolated_data = _impl::interpolated_data<I, typename I::args_t>;
+
     namespace interpolators {
 
+        template<typename Interpolator, typename Arg, typename Val>
+        concept interpolator_1d = requires(Interpolator a, Arg x, size_t n) {
+            { a.point(x) } -> std::same_as<Val>;
+            { a.line(x, x, n) } -> concepts::vector1d<Val>;
+        };
+
+        template<typename Interpolator, typename Arg, typename Val>
+        concept interpolator_2d = requires(Interpolator a, Arg x, Arg y, size_t n) {
+            { a.point(x, y) } -> std::same_as<Val>;
+            { a.line(x, y, y, n) } -> concepts::vector1d<Val>;
+            { a.field(x, x, n, y, y, n) } -> concepts::vector2d<Val>;
+        };
+
+        template<typename Interpolator, typename Arg, typename Val>
+        concept interpolator_3d = requires(Interpolator a, Arg x, Arg y, Arg z, size_t n) {
+            { a.point(x, y, z) } -> std::same_as<Val>;
+            { a.line(x, y, z, z, n) } -> concepts::vector1d<Val>;
+            { a.field(x, y, y, n, z, z, n) } -> concepts::vector2d<Val>;
+            { a.area(x, x, n, y, y, n, z, z, n) } -> concepts::vector3d<Val>;
+        };
+
         template<typename T, typename V>
-        struct interpolator_1d {
+        struct interpolator_1d_base {
 
             using line_t = types::vector1d_t<V>;
 
@@ -549,7 +575,7 @@ namespace ample::utils {
         };
 
         template<typename T, typename V>
-        struct interpolator_2d {
+        struct interpolator_2d_base {
 
             using line_t = types::vector1d_t<V>;
             using field_t = types::vector2d_t<V>;
@@ -573,7 +599,7 @@ namespace ample::utils {
         };
 
         template<typename T, typename V>
-        struct interpolator_3d {
+        struct interpolator_3d_base {
 
             using line_t = types::vector1d_t<V>;
             using field_t = types::vector2d_t<V>;
@@ -608,15 +634,15 @@ namespace ample::utils {
         };
 
         template<typename T, typename V = T>
-        class linear_interpolator_1d : public interpolator_1d<T, V> {
+        class linear_interpolator_1d : public interpolator_1d_base<T, V> {
 
         public:
 
             using data_t = types::vector1d_t<V>;
-            using typename interpolator_1d<T, V>::line_t;
+            using typename interpolator_1d_base<T, V>::line_t;
             using args_t = std::tuple<types::vector1d_t<T>>;
 
-            using interpolator_1d<T, V>::line;
+            using interpolator_1d_base<T, V>::line;
 
             linear_interpolator_1d(std::reference_wrapper<const args_t> args, const data_t& data) :
                     _args(std::move(args)), _data(data) {}
@@ -677,17 +703,17 @@ namespace ample::utils {
         };
 
         template<typename T, typename V = T>
-        class linear_interpolator_2d : public interpolator_2d<T, V> {
+        class linear_interpolator_2d : public interpolator_2d_base<T, V> {
 
         public:
 
             using data_t = types::vector2d_t<V>;
-            using typename interpolator_2d<T, V>::line_t;
-            using typename interpolator_2d<T, V>::field_t;
+            using typename interpolator_2d_base<T, V>::line_t;
+            using typename interpolator_2d_base<T, V>::field_t;
             using args_t = std::tuple<types::vector1d_t<T>, types::vector1d_t<T>>;
 
-            using interpolator_2d<T, V>::line;
-            using interpolator_2d<T, V>::field;
+            using interpolator_2d_base<T, V>::line;
+            using interpolator_2d_base<T, V>::field;
 
             linear_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data) :
                     _args(std::move(args)), _data(data) {}
@@ -709,11 +735,11 @@ namespace ample::utils {
             }
 
             void line(const T& x, line_t& res) const {
-                line(x, y()->front(), y()->back(), res);
+                line(x, y().front(), y().back(), res);
             }
 
             line_t line(const T& x, const size_t n) const {
-                return line(x, y()->front(), y()->back(), n);
+                return line(x, y().front(), y().back(), n);
             }
 
             void field(const T& x0, const T& x1, const T& y0, const T& y1, field_t& res) const override {
@@ -721,7 +747,7 @@ namespace ample::utils {
             }
 
             void field(data_t& res) const {
-                field(x()->front(), x()->back(), y()->front(), y()->back(), res);
+                field(x().front(), x().back(), y().front(), y().back(), res);
             }
 
             field_t field(const size_t  nx, const size_t ny) const {
@@ -767,17 +793,17 @@ namespace ample::utils {
         };
 
         template<typename T, typename V = T>
-        class delaunay_interpolator_2d : public interpolator_2d<T, V> {
+        class delaunay_interpolator_2d : public interpolator_2d_base<T, V> {
 
         public:
 
             using data_t = types::vector1d_t<V>;
-            using typename interpolator_2d<T, V>::line_t;
-            using typename interpolator_2d<T, V>::field_t;
+            using typename interpolator_2d_base<T, V>::line_t;
+            using typename interpolator_2d_base<T, V>::field_t;
             using args_t = std::tuple<delaunay_triangulation<T>>;
 
-            using interpolator_2d<T, V>::line;
-            using interpolator_2d<T, V>::field;
+            using interpolator_2d_base<T, V>::line;
+            using interpolator_2d_base<T, V>::field;
 
             delaunay_interpolator_2d(std::reference_wrapper<const args_t> args, const data_t& data) :
                     _args(std::move(args)), _data(data) {}
@@ -851,19 +877,19 @@ namespace ample::utils {
         };
 
         template<typename T, typename V = T>
-        class linear_interpolator_3d : public interpolator_3d<T, V> {
+        class linear_interpolator_3d : public interpolator_3d_base<T, V> {
 
         public:
 
             using data_t = types::vector3d_t<V>;
-            using typename interpolator_3d<T, V>::line_t;
-            using typename interpolator_3d<T, V>::field_t;
-            using typename interpolator_3d<T, V>::area_t;
+            using typename interpolator_3d_base<T, V>::line_t;
+            using typename interpolator_3d_base<T, V>::field_t;
+            using typename interpolator_3d_base<T, V>::area_t;
             using args_t = std::tuple<types::vector1d_t<T>, types::vector1d_t<T>, types::vector1d_t<T>>;
 
-            using interpolator_3d<T, V>::line;
-            using interpolator_3d<T, V>::field;
-            using interpolator_3d<T, V>::area;
+            using interpolator_3d_base<T, V>::line;
+            using interpolator_3d_base<T, V>::field;
+            using interpolator_3d_base<T, V>::area;
 
             linear_interpolator_3d(std::reference_wrapper<const args_t> args, const data_t& data) :
                     _args(std::move(args)), _data(data) {}
@@ -906,7 +932,7 @@ namespace ample::utils {
             }
 
             field_t field(const T& x, const size_t ny, const size_t nz) const {
-                return interpolator_3d<T, V>::field(x, y().front(), y().back(), ny, z().front(), z().back(), nz);
+                return interpolator_3d_base<T, V>::field(x, y().front(), y().back(), ny, z().front(), z().back(), nz);
             }
 
             void area(const T& x0, const T& x1, const T& y0, const T& y1, const T& z0, const T& z1, area_t& res) const override {
@@ -918,7 +944,7 @@ namespace ample::utils {
             }
 
             area_t area(const size_t& nx, const size_t& ny, const size_t& nz) const {
-                return interpolator_3d<T, V>::area(
+                return interpolator_3d_base<T, V>::area(
                     x().front(), x().back(), nx, 
                     y().front(), y().back(), ny,
                     z().front(), z().back(), nz);
@@ -967,9 +993,6 @@ namespace ample::utils {
         };
 
     }// namespace interpolators
-
-    template<typename I>
-    using interpolated_data = _impl::interpolated_data<I, typename I::args_t>;
 
     template<typename T, typename V = T>
     using linear_interpolated_data_1d = interpolated_data<interpolators::linear_interpolator_1d<T, V>>;
