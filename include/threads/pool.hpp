@@ -57,6 +57,21 @@ namespace ample::threads {
                 _workers.emplace_back(&pool::_worker, this, i);
         }
 
+        ~pool() {
+            {
+                std::lock_guard lock(_mutex);
+                if (_stop)
+                    return;
+
+                _stop = true;
+            }
+
+            _cv.notify_all();
+
+            for (auto& it : _workers)
+                it.join();
+        }
+
         template<typename F>
         task_t& add(F function) {
             std::lock_guard lock(_mutex);
@@ -81,6 +96,8 @@ namespace ample::threads {
                 std::lock_guard lock(_mutex);
                 _stop = true;
             }
+
+            _cv.notify_all();
 
             for (auto& it : _workers)
                 it.join();

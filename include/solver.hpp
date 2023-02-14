@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include "config.hpp"
+#include "utils/event.hpp"
 #include "utils/types.hpp"
 #include "utils/utils.hpp"
 #include "utils/assert.hpp"
@@ -14,6 +15,7 @@
 #include "threads/pool.hpp"
 #include "boundary_conditions.hpp"
 #include "utils/interpolation.hpp"
+#include "threads/buffer_manager.hpp"
 
 //WINDOWS DEFINES VERY NICE MACRO FOR NO REASON
 #ifdef IN
@@ -28,6 +30,9 @@ namespace ample {
     class solver {
 
     public:
+
+        utils::event<const Arg&, const types::vector2d_t<Val>&> on_solution;
+        utils::event<const size_t&, const Arg&, const Val&, const types::vector2d_t<Val>&> on_mode_solution;
 
         solver(BC boundary_conditions, coefficients<Val> coefficients,
                const Arg& x0, const Arg& x1, const size_t& nx,
@@ -45,12 +50,11 @@ namespace ample {
                            config.y0(), config.y1(), config.ny(),
                            config.z0(), config.z1(), config.nz()) {}
 
-        template<typename IN, typename CL, typename VL>
+        template<typename IN, typename VL>
         void solve(const IN& init,
                    const types::vector1d_t<VL>& k0,
                    const utils::linear_interpolated_data_1d<Arg, VL>& k_int,
                    const utils::linear_interpolated_data_2d<Arg, Arg>& phi_int,
-                   CL&& callback,
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto nm = k0.size();
@@ -90,7 +94,7 @@ namespace ample {
                         bv[y][z] += ph[j][y][z] * cv[j][i] * exp;
             }
 
-            callback(_x0, bv);
+            on_solution(_x0, bv);
 
             auto solve_func = [&, &ac=ac, &bc=bc, &cc=cc](const size_t& j, const Arg& x, auto& ov, auto& nv, auto& solver) {
                 nv.assign(nc, cv[j]);
@@ -107,22 +111,17 @@ namespace ample {
                                    [&c=aa[j][i]](const auto& a, const auto& b) { return a + c * b; });
                 }
 
-                for (size_t i = 0, y = nw; i < _ny; ++i, ++y) {
-                    const auto exp = cv[j][y] * std::exp(im * k0[j] * x);
-                    for (size_t z = 0; z < _nz; ++z)
-                        ov[i][z] = ph[j][i][z] * exp;
-                }
+                _complete_mode_solution(j, x, nw, k0[j], ov, ph[j], cv[j]);
             };
 
-            _compute(solve_func, callback, nm, ny, nc, num_workers, buff_size);
+            _compute(solve_func, nm, ny, nc, num_workers, buff_size);
         }
 
-        template<typename IN, typename CL, typename VL>
+        template<typename IN, typename VL>
         void solve(const IN& init,
                    const types::vector1d_t<VL>& k0,
                    const utils::linear_interpolated_data_2d<Arg, VL>& k_int,
                    const utils::linear_interpolated_data_3d<Arg, Arg>& phi_int,
-                   CL&& callback,
                    const size_t num_workers = 1,
                    const size_t buff_size = 100) const {
             const auto nm = k0.size();
@@ -159,7 +158,7 @@ namespace ample {
                         bv[y][z] += ip[y][z] * cv[j][i] * exp;
             }
 
-            callback(_x0, bv);
+            on_solution(_x0, bv);
 
             types::vector2d_t<VL>  kk(nm, types::vector1d_t<VL> (_ny));
             types::vector3d_t<Arg> ph(nm, types::vector2d_t<Arg>(_ny, types::vector1d_t<Arg>(_nz)));
@@ -184,14 +183,22 @@ namespace ample {
                                    [&c = aa[j][i]](const auto &a, const auto &b) { return a + c * b; });
                 }
 
-                for (size_t i = 0, y = nw; i < _ny; ++i, ++y) {
-                    const auto exp = cv[j][y] * std::exp(im * k0[j] * x);
-                    for (size_t z = 0; z < _nz; ++z)
-                        ov[i][z] = ph[j][i][z] * exp;
-                }
+                _complete_mode_solution(j, x, nw, k0[j], ov, ph[j], cv[j]);
             };
 
-            _compute(solve_func, callback, nm, ny, nc, num_workers, buff_size);
+            _compute(solve_func, nm, ny, nc, num_workers, buff_size);
+        }
+
+        Arg hx() const {
+            return _hx;
+        }
+
+        Arg hy() const {
+            return (_y1 - _y0) / (_ny - 1);
+        }
+
+        Arg hz() const {
+            return _nz > 1 ? (_z1 - _z0) / (_nz - 1) : 0;
         }
         
 
@@ -230,70 +237,83 @@ namespace ample {
             return std::all_of(values.begin(), values.end(), [](const auto& v) { return v; });
         }
 
-        template<typename SF, typename CL>
-        void _compute(const SF& solve_func, CL&& callback, const size_t& nm, const size_t& ny, const size_t& nc, size_t num_workers, const size_t buff_size) const {
-            threads::pool<size_t, Arg, size_t> pool(num_workers);
+        template<typename OV, typename PH, typename CV, typename K0>
+        void _complete_mode_solution(const size_t& j, const Arg& x, const size_t& nw, const K0& k0, OV& ov, const PH& ph, const CV& cv) const {
+            for (size_t i = 0, y = nw; i < _ny; ++i, ++y)
+                for (size_t z = 0; z < _nz; ++z)
+                    ov[i][z] = ph[i][z] * cv[y];
+
+            on_mode_solution(j, x, k0, ov);
+
+            for (size_t i = 0, y = nw; i < _ny; ++i, ++y) {
+                const auto exp = std::exp(im * k0 * x);
+                for (size_t z = 0; z < _nz; ++z)
+                    ov[i][z] *= exp;
+            }
+        }
+
+        template<typename SF>
+        void _compute(const SF& solve_func, const size_t& nm, const size_t& ny, const size_t& nc, size_t num_workers, const size_t buff_size) const {
+            threads::pool<size_t, Arg> pool(num_workers);
 
             types::vector3d_t<Val> ov(nm, types::vector2d_t<Val>(_ny, types::vector1d_t<Val>(_nz))),
                                    nv(nm, types::vector2d_t<Val>( nc, types::vector1d_t<Val>( ny)));
 
             std::vector solvers(nm, _get_thomas_solver(ny));
-
-            types::vector1d_t<std::mutex> buff_mutex(buff_size);
-            types::vector2d_t<bool> done_buff(buff_size, types::vector1d_t<bool>(nm, false));
-            types::vector3d_t<Val> ov_buff(buff_size, types::vector2d_t<Val>(_ny, types::vector1d_t<Val>(_nz, ze)));
+            threads::buffer_manager<types::vector2d_t<Val>> buffer(nm, buff_size, types::vector2d_t<Val>(_ny, types::vector1d_t<Val>(_nz, ze)));
 
             const auto& call = pool.add(
-                [&](const size_t& j, const size_t& i, size_t in) {
+                [&, buffer_index=size_t(0)](const size_t& j, const size_t& i) {
                     while (true) {
-                        std::lock_guard lock(buff_mutex[in]);
+                        auto data = buffer.current();
 
-                        if (!_all(done_buff[in]))
+                        if (!data.ready())
                             break;
 
-                        callback(_x0 + _hx * i, ov_buff[in]);
+                        on_solution(_x0 + _hx * i, data.data());
 
-                        for (size_t y = 0; y < _ny; ++y)
-                            ov_buff[in][y].assign(_nz, ze);
+                        for (size_t m = 0; m < _ny; ++m)
+                            data.data()[m].assign(_nz, ze);
 
-                        done_buff[in].assign(nm, false);
-
-                        in = (in + 1) % buff_size;
+                        data.complete();
+                        data.unlock();
                     }
                 }
             );
 
             const auto& solution = pool.add(
-                [&](const size_t& j, const size_t& i, const size_t& in, const threads::task<size_t, Arg, size_t>& task) {
-                    {
-                        std::lock_guard lock(buff_mutex[in]);
-                        if (done_buff[in][j]) {
-                            task.push(j, i, in);
-                            return;
-                        }
+                [&](const size_t& j, const size_t& i, const threads::task<size_t, Arg>& task) {
+                    auto data = buffer.get(j);
+
+                    if (!data.available()) {
+                        task.push(j, i);
+                        return;
                     }
 
-                    solve_func(j, _x0 + _hx * i, ov[j], nv[j], solvers[j]);
+                    data.unlock();
 
-                    {
-                        std::lock_guard lock(buff_mutex[in]);
+                    const auto x = _x0 + _hx * i;
+                    solve_func(j, x, ov[j], nv[j], solvers[j]);
 
-                        for (size_t m = 0; m < _ny; ++m)
-                            for (size_t z = 0; z < _nz; ++z)
-                                ov_buff[in][m][z] += ov[j][m][z];
+                    data.lock();
+                    auto& ov_buff = data.data();
 
-                        done_buff[in][j] = true;
-                        if (_all(done_buff[in]))
-                            call.push_single(j, i, in);
-                    }
+                    for (size_t m = 0; m < _ny; ++m)
+                        for (size_t z = 0; z < _nz; ++z)
+                            ov_buff[m][z] += ov[j][m][z];
+
+                    if (data.complete())
+                        call.push_single(j, i);
+
+                    data.unlock();
 
                     if (i < _nx)
-                        task.push(j, i + 1, (in + 1) % buff_size);
+                        task.push(j, i + 1);
                 }
             );
 
             for (size_t j = 0; j < nm; ++j)
-                solution.push(j, 1, 0);
+                solution.push(j, 1);
 
             pool.join();
         }

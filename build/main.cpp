@@ -36,7 +36,10 @@
 #include "utils/interpolation.hpp"
 #include "boundary_conditions.hpp"
 #include "utils/multi_optional.hpp"
+#include "utils/differentiaion.hpp"
 #include "boost/program_options.hpp"
+#include "threads/buffer_manager.hpp"
+#include "utils/to_string_helper.hpp"
 
 namespace types = ample::types;
 namespace po = boost::program_options;
@@ -70,28 +73,7 @@ inline bool verbose(const size_t& level) {
     return ample::utils::verbosity::instance().level >= level;
 }
 
-class to_string_helper {
-
-public:
-
-    explicit to_string_helper() {
-        _stream.setf(std::ios_base::boolalpha);
-        _stream.unsetf(std::ios_base::showpoint);
-    }
-
-    template<typename V>
-    std::string to_string(const V& value) {
-        _stream << value;
-        const auto result = _stream.str();
-        _stream.str(std::string());
-        return result;
-    }
-
-private:
-
-    std::stringstream _stream;
-
-} helper;
+ample::utils::to_string_helper helper;
 
 template<typename T>
 struct strings {
@@ -572,20 +554,20 @@ void write_vector(const types::vector1d_t<V>& data, W&& writer) {
     writer.write(reinterpret_cast<const types::real_t*>(data.data()), data.size() * sizeof(data[0]) / sizeof(types::real_t));
 }
 
-template<typename S, typename K, typename V, typename I, typename C>
+template<typename S, typename K, typename V, typename I>
 void solve(S& solver, const I& init, const K& k0,
            const ample::utils::linear_interpolated_data_1d<types::real_t, V>& k_j,
            const ample::utils::linear_interpolated_data_2d<types::real_t>& phi_j,
-           C&& callback, const size_t& num_workers, const size_t& buff_size) {
-    solver.solve(init, k0, k_j, phi_j, callback, num_workers, buff_size);
+           const size_t& num_workers, const size_t& buff_size) {
+    solver.solve(init, k0, k_j, phi_j, num_workers, buff_size);
 }
 
-template<typename S, typename K, typename V, typename I, typename C>
+template<typename S, typename K, typename V, typename I>
 void solve(S& solver, const I& init, const K& k0,
            const ample::utils::linear_interpolated_data_2d<types::real_t, V>& k_j,
            const ample::utils::linear_interpolated_data_3d<types::real_t>& phi_j,
-           C&& callback, const size_t& num_workers, const size_t& buff_size) {
-    solver.solve(init, k0, k_j, phi_j, callback, num_workers, buff_size);
+           const size_t& num_workers, const size_t& buff_size) {
+    solver.solve(init, k0, k_j, phi_j, num_workers, buff_size);
 }
 
 const std::set<std::string> available_jobs {
@@ -594,7 +576,8 @@ const std::set<std::string> available_jobs {
     "rays",
     "modes",
     "impulse",
-    "solution"
+    "solution",
+    "acceleration"
 };
 
 class jobs {
@@ -655,6 +638,11 @@ public:
         _prep("modes", "k0", field_group::modes, group);
         _prep("modes", "phi_s", field_group::modes, group);
         _prep("solution", field_group::modes | field_group::solver | field_group::initial, group);
+        _prep("acceleration", "acceleration_x", field_group::modes | field_group::solver | field_group::initial, group);
+        _prep("acceleration", "acceleration_y", field_group::modes | field_group::solver | field_group::initial, group);
+
+        if (config.has_nz() && config.nz() > 1)
+            _prep("acceleration", "acceleration_z", field_group::modes | field_group::solver | field_group::initial, group);
 
         if (jobs.has_job("impulse"))
             group = group | field_group::modes | field_group::solver | field_group::initial;
@@ -732,7 +720,7 @@ public:
         }
 
         if (jobs.has_job("impulse"))
-            _meta["outputs"].push_back(_get_meta_for("impulse", { 
+            _meta["outputs"].push_back(_get_meta_for("impulse", {
                     _dimension(config.receivers()),
                     _dimension(config.times().front(), config.times().back(), config.times().size())
                 }, _add_extension(std::string("impulse")))
@@ -740,6 +728,14 @@ public:
 
         if (jobs.has_job("solution"))
             _save_meta_for("solution", { _n_modes.size(), dimx(), dimy(), dimz() }, files);
+
+        if (jobs.has_job("acceleration")) {
+            _save_meta_for("acceleration_x", { _n_modes.size(), dimx(), dimy(), dimz() }, files);
+            _save_meta_for("acceleration_y", { _n_modes.size(), dimx(), dimy(), dimz() }, files);
+
+            if (config.nz() > 1)
+                _save_meta_for("acceleration_z", { _n_modes.size(), dimx(), dimy(), dimz() }, files);
+        }
 
         std::ofstream out(output / "meta.json");
         out << std::setw(4) << _meta << std::endl;
@@ -838,8 +834,9 @@ private:
         return path;
     }
 
-    auto _get_filename(const char* name) const {
-        return _add_extension(output / name / helper.to_string(config.f()));
+    template<typename... T>
+    auto _get_filename(const T&... value) const {
+        return _add_extension((output / ... / value) / helper.to_string(config.f()));
     }
 
     void _pick_writer() {
@@ -954,17 +951,32 @@ private:
                 if (_source_spectrum.has_value())
                     _s = _source_spectrum[fi];
 
-                const auto [k0, phi_s] = M::make_source();
+                auto [k0, phi_s] = M::make_source();
+
+                const auto mm = config.max_mode();
+                if (k0.size() > mm) {
+                    k0.resize(mm);
+                    phi_s.resize(mm);
+                }
+
                 const auto [k_j, phi_j] = _perform_modes(k0, phi_s);
 
                 _perform_rays(k_j, phi_j);
 
                 if (!(has_impulse || has_sel || _owner.jobs.has_job("solution") || _owner.jobs.has_job("init")))
                     continue;
-                
+
                 const auto init = _perform_init(k0, phi_s, k_j);
 
-                _perform_sel(init, k0, k_j, phi_j);
+                const auto descriptor = config.boundary_conditions();
+
+                ample::solver solver(
+                    descriptor.construct<
+                            ample::pml_boundary_conditions<types::real_t>, size_t, ample::pml_function<types::real_t>>("width" ,"function"),
+                    config
+                );
+
+                _perform_sel(init, k0, k_j, phi_j, solver);
 
                 if (k0.empty())
                     continue;
@@ -1177,35 +1189,33 @@ private:
             }
         }
 
-        template<typename I, typename K0, typename KJ, typename PJ>
-        void _perform_sel(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j) {
+        template<typename I, typename K0, typename KJ, typename PJ, typename S>
+        void _perform_sel(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, S& solver) {
             if (_owner.jobs.has_job("sel"))
-                _perform_impulse(init, k0, k_j, phi_j,
-                    ample::utils::ekc_callback(_owner.row_step,
-                        [&sel_buffer=*_sel_buffer, i=size_t(0), this](const auto& x, const auto& data) mutable {
-                            size_t j = 0;
+                solver.on_solution += ample::utils::ekc_callback(_owner.row_step,
+                     [&sel_buffer=*_sel_buffer, i=size_t(0), this](const auto& x, const auto& data) mutable {
+                         size_t j = 0;
 
-                            auto [begin, end] = ample::utils::stride(data.begin(), data.end(), _owner.col_step);
-                            while (begin != end) {
-                                sel_buffer[i][j++] = *begin;
-                                ++begin;
-                            }
+                         auto [begin, end] = ample::utils::stride(data.begin(), data.end(), _owner.col_step);
+                         while (begin != end) {
+                             sel_buffer[i][j++] = *begin;
+                             ++begin;
+                         }
 
-                            ++i;
-                        }
-                    )
+                         ++i;
+                     }
                 );
-            else
-                _perform_impulse(init, k0, k_j, phi_j, ample::utils::nothing_callback());
+
+            _perform_impulse(init, k0, k_j, phi_j, solver);
         }
 
-        template<typename I, typename K0, typename KJ, typename PJ, typename... C>
-        void _perform_impulse(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, C&&... callbacks) {
+        template<typename I, typename K0, typename KJ, typename PJ, typename S>
+        void _perform_impulse(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, S& solver) {
             if (_owner.jobs.has_job("impulse"))
-                _perform_solution(init, k0, k_j, phi_j, std::forward<C>(callbacks)...,
+                solver.on_solution +=
                     [
                         &receivers=config.receivers(),
-                        &result=*_impulse_result, 
+                        &result=*_impulse_result,
                         &ix=*_ix,
                         &iy=*_iy,
                         &iz=*_iz,
@@ -1216,6 +1226,9 @@ private:
                         li=0,
                         ir=config.reference_index()
                     ](const auto& x, const auto& data) mutable {
+                        if (last.empty())
+                            last.assign(data.begin(), data.end());
+
                         for (; !last.empty() && li < ix.size() && receivers[ix[li]].x <= x; ++li) {
                             const auto& [px, py, pz] = receivers[ix[li]];
                             const auto& [ya, yb] = ample::utils::find_indices(iy, py);
@@ -1234,49 +1247,172 @@ private:
                         }
                         last_x = x;
                         last.assign(data.begin(), data.end());
+                    };
+
+            _perform_solution(init, k0, k_j, phi_j, solver);
+        }
+
+        template<typename I, typename K0, typename KJ, typename PJ, typename S>
+        void _perform_solution(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, S& solver) {
+            if (_owner.jobs.has_job("solution"))
+                solver.on_solution += ample::utils::ekc_callback(_owner.row_step,
+                    [writer=std::make_shared<W<types::real_t>>(_owner._get_filename("solution")), this](const auto& x, const auto& data) mutable {
+                        for (size_t i = 0; i < data.size(); i += _owner.col_step)
+                            writer->write(reinterpret_cast<const types::real_t*>(data[i].data()), data[i].size() * 2);
                     }
                 );
-            else 
-                _perform_solution(init, k0, k_j, phi_j, std::forward<C>(callbacks)...);
+
+            _perform_acceleration(init, k0, k_j, phi_j, solver);
         }
 
-        template<typename I, typename K0, typename KJ, typename PJ, typename... C>
-        void _perform_solution(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, C&&... callbacks) {
-            if (_owner.jobs.has_job("solution")) {
-                W<types::real_t> writer(_owner._get_filename("solution"));
-                _perform_solve(init, k0, k_j, phi_j, std::forward<C>(callbacks)...,
-                    ample::utils::ekc_callback(_owner.row_step,
-                        [&writer, this](const auto& x, const auto& data) mutable {
-                            for (size_t i = 0; i < data.size(); i += _owner.col_step)
-                                writer.write(reinterpret_cast<const types::real_t*>(data[i].data()), data[i].size() * 2);
+        template<typename I, typename K0, typename KJ, typename PJ, typename S>
+        void _perform_acceleration(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, S& solver) {
+            if (_owner.jobs.has_job("acceleration")) {
+                const auto ny = (config.ny() - 1) / _owner.col_step + 1;
+                const auto buffer_size = _owner.buff_size;
+                const auto x_filename = _owner._get_filename("acceleration_x");
+                const auto y_filename = _owner._get_filename("acceleration_y");
+                const auto z_filename = _owner._get_filename("acceleration_z");
+
+                const auto& bottom_rhos = config.bottom_rhos();
+                types::vector1d_t<types::real_t> rhos{ bottom_rhos.front() };
+                rhos.insert(rhos.end(), bottom_rhos.begin(), bottom_rhos.end());
+
+                const auto& bottom_layers = config.bottom_layers();
+                types::vector1d_t<types::real_t> layers{ types::real_t(0) };
+                layers.insert(layers.end(), bottom_layers.begin(), bottom_layers.end());
+
+                struct callback_data {
+
+                    using writer_t = W<types::real_t>;
+                    using row_t    = types::vector2d_t<types::complex_t>;
+                    using column_t = types::vector1d_t<types::complex_t>;
+                    using buffer_t = ample::threads::buffer_manager<row_t>;
+                    using differentiator_t = ample::utils::differentiator_3_points_3d<types::complex_t>;
+
+                    buffer_t x_buffer, y_buffer, z_buffer;
+                    std::array<buffer_t*, 3> buffers;
+
+                    writer_t x_writer, y_writer, z_writer;
+                    std::array<writer_t*, 3> writers;
+
+                    types::vector1d_t<differentiator_t> differentiators;
+                    types::vector1d_t<size_t> index;
+
+                    ample::utils::linear_interpolated_data_1d<types::real_t> bottom_rhos;
+
+                    ample::threads::pool<types::real_t> pool;
+                    std::reference_wrapper<const ample::threads::task<types::real_t>> task;
+
+                    callback_data(const size_t& nm, const size_t& ny, types::vector1d_t<types::real_t> layers, types::vector1d_t<types::real_t> rhos, jobs_config& owner, S& solver) :
+                        x_buffer(nm, owner.buff_size, row_t(ny, column_t(config.nz(), 0.))),
+                        y_buffer(nm, owner.buff_size, row_t(ny, column_t(config.nz(), 0.))),
+                        z_buffer(nm, owner.buff_size, row_t(ny, column_t(config.nz(), 0.))),
+                        buffers({ &x_buffer, &y_buffer, &z_buffer }),
+                        x_writer(owner._get_filename("acceleration_x")),
+                        y_writer(owner._get_filename("acceleration_y")),
+                        z_writer(owner._get_filename("acceleration_z")),
+                        writers({ &x_writer, &y_writer, &z_writer }),
+                        differentiators(nm, { solver.hx(), solver.hy(), solver.hz() }),
+                        index(nm, 0),
+                        bottom_rhos(std::move(layers), std::move(rhos)),
+                        pool(1),
+                        task(std::cref(pool.add(
+                            [this](const auto& x) mutable {
+                                const auto z0 = config.z0();
+                                const auto hz = config.nz() > 1 ? (config.z1() - z0) / (config.nz() - 1) : 0;
+
+                                for (size_t i = 0; i < buffers.size(); ++i) {
+                                    auto data_wrapper = buffers[i]->current();
+                                    auto& data = data_wrapper.data();
+
+                                    const auto d = config.bathymetry().line(x, data.size());
+
+                                    for (size_t j = 0; j < data.size(); ++j) {
+                                        auto k = d[j] > z0 ? static_cast<size_t>((d[j] - z0) / hz) + 1 : 0;
+
+                                        for (; k < data[j].size(); ++k)
+                                            data[j][k] /= bottom_rhos[0].point(z0 + hz * k);
+
+                                        writers[i]->write(reinterpret_cast<types::real_t*>(data[j].data()), data[j].size() * 2);
+                                    }
+
+                                    for (auto &it : data)
+                                        it.assign(config.nz(), 0);
+
+                                    data_wrapper.complete();
+                                    data_wrapper.unlock();
+                                }
+                            }
+                        ))) {}
+
+                    callback_data(const callback_data&) = delete;
+                    callback_data(callback_data&&) = delete;
+                };
+
+                solver.on_mode_solution +=
+                    [this, cdata=std::make_shared<callback_data>(k0.size(), ny, std::move(layers), std::move(rhos), _owner, solver)](const auto& j, const auto& x, const auto& k0, const auto& data) {
+                    auto [begin, end] = ample::utils::stride(data.begin(), data.end(), _owner.col_step);
+                    cdata->differentiators[j].accept(types::vector2d_t<types::complex_t>(begin, end));
+
+                    while (cdata->differentiators[j].next())
+                        if (cdata->index[j]++ % _owner.row_step == 0) {
+                            const auto arg = types::complex_t(0., 1.) * k0;
+                            const auto exp = std::exp(arg * x);
+                            const auto val = cdata->differentiators[j].point();
+
+                            const auto x_derivative = cdata->differentiators[j].x_derivative();
+                            auto  x_derivative_buffer_wrapper = cdata->x_buffer.get(j);
+                            auto& x_derivative_buffer = x_derivative_buffer_wrapper.data();
+
+                            const auto y_derivative = cdata->differentiators[j].y_derivative();
+                            auto  y_derivative_buffer_wrapper = cdata->y_buffer.get(j);
+                            auto& y_derivative_buffer = y_derivative_buffer_wrapper.data();
+
+                            for (size_t i = 0; i < x_derivative.size(); ++i)
+                                for (size_t k = 0; k < x_derivative[i].size(); ++k) {
+                                    x_derivative_buffer[i][k] += exp * (x_derivative[i][k] + val[i][k] * arg);
+                                    y_derivative_buffer[i][k] += exp *  y_derivative[i][k];
+                                }
+
+                            const auto complete = x_derivative_buffer_wrapper.complete();
+                            x_derivative_buffer_wrapper.unlock();
+
+                            y_derivative_buffer_wrapper.complete();
+                            y_derivative_buffer_wrapper.unlock();
+
+                            if (config.nz() > 1) {
+                                const auto z_derivative = cdata->differentiators[j].z_derivative();
+                                auto  z_derivative_buffer_wrapper = cdata->z_buffer.get(j);
+                                auto& z_derivative_buffer = z_derivative_buffer_wrapper.data();
+
+                                for (size_t i = 0; i < x_derivative.size(); ++i)
+                                    for (size_t k = 0; k < x_derivative[i].size(); ++k)
+                                        z_derivative_buffer[i][k] += exp * z_derivative[i][k];
+
+                                z_derivative_buffer_wrapper.complete();
+                                z_derivative_buffer_wrapper.unlock();
+                            }
+
+                            if (complete)
+                                cdata->task.get().push(x);
                         }
-                    )
-                );
+
+                };
             }
-            else
-                _perform_solve(init, k0, k_j, phi_j, std::forward<C>(callbacks)...);
+
+            _perform_solve(init, k0, k_j, phi_j, solver);
         }
 
-        template<typename I, typename K0, typename KJ, typename PJ, typename... C>
-        void _perform_solve(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, C&&... callbacks) {
-            if (!_owner.jobs.has_job("solution") && !_owner.jobs.has_job("impulse"))
+        template<typename I, typename K0, typename KJ, typename PJ, typename S>
+        void _perform_solve(const I& init, const K0& k0, const KJ& k_j, const PJ& phi_j, S& solver) {
+            if (!_owner.jobs.has_job("solution") && !_owner.jobs.has_job("impulse") && !_owner.jobs.has_job("acceleration"))
                 return;
 
-            const auto descriptor = config.boundary_conditions();
-
-            ample::solver solver(
-                descriptor.construct<
-                    ample::pml_boundary_conditions<types::real_t>, size_t, ample::pml_function<types::real_t>>("width" ,"function"),
-                config
-            );
-
-            auto callback = ample::utils::callbacks(
-                ample::utils::progress_bar_callback(config.nx(), "Solution", verbose(2)),
-                std::forward<C>(callbacks)...
-            );
+            solver.on_solution += ample::utils::progress_bar_callback(config.nx(), "Solution", verbose(2));
 
             const auto start = std::chrono::system_clock::now();
-            solve(solver, init, k0, k_j, phi_j, callback, _owner.num_workers, _owner.buff_size);
+            solve(solver, init, k0, k_j, phi_j, _owner.num_workers, _owner.buff_size);
             const auto end = std::chrono::system_clock::now();
             verboseln_lv(1, "Elapsed time: ", std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count(), "ms");
         }
@@ -1285,7 +1421,7 @@ private:
 
 };
 
-void validate(boost::any& v, 
+void validate(boost::any& v,
               const std::vector<std::string>& values,
               jobs*, int) {
     if (values.empty())

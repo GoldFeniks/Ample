@@ -57,10 +57,6 @@ namespace ample::utils {
             ekc_callback(const size_t& k, DCallback&& data_callback, CCallback&& count_callback) :
                _k(k), _data_callback(std::move(data_callback)), _count_callback(std::move(count_callback)) {}
 
-            ekc_callback(ekc_callback&& other) noexcept :
-                _ck(std::move(other._ck)), _k(other._k),
-                _data_callback(std::move(other._data_callback)), _count_callback(std::move(other._count_callback)) {}
-
             template<typename T, typename D>
             void operator()(const T& x, const D& data) {
                 if (_ck % _k == 0) {
