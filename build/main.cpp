@@ -1019,7 +1019,7 @@ private:
                 const auto cs = config.hydrology().line(0, 0, h, static_cast<size_t>(h));
                 const auto cw = config.c_win();
 
-                auto omeg = ample::utils::mesh_1d(0., 1 / config.dt(), _fft->size());
+                auto omeg = ample::utils::mesh_1d(0., 1 / config.dt(), _fft->size() + 1);
                 std::transform(omeg.begin(), omeg.end(), omeg.begin(), [](const auto& value) { return value * 2 * M_PI; });
 
                 const auto& receivers = config.receivers();
