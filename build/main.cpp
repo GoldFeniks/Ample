@@ -1349,8 +1349,7 @@ private:
 
                 solver.on_mode_solution +=
                     [this, cdata=std::make_shared<callback_data>(k0.size(), ny, std::move(layers), std::move(rhos), _owner, solver)](const auto& j, const auto& x, const auto& k0, const auto& data) {
-                    auto [begin, end] = ample::utils::stride(data.begin(), data.end(), _owner.col_step);
-                    cdata->differentiators[j].accept(types::vector2d_t<types::complex_t>(begin, end));
+                    cdata->differentiators[j].accept(data);
 
                     while (cdata->differentiators[j].next())
                         if (cdata->index[j]++ % _owner.row_step == 0) {
@@ -1366,10 +1365,10 @@ private:
                             auto  y_derivative_buffer_wrapper = cdata->y_buffer.get(j);
                             auto& y_derivative_buffer = y_derivative_buffer_wrapper.data();
 
-                            for (size_t i = 0; i < x_derivative.size(); ++i)
+                            for (size_t i = 0, p = 0; i < x_derivative.size(); i += _owner.col_step, ++p)
                                 for (size_t k = 0; k < x_derivative[i].size(); ++k) {
-                                    x_derivative_buffer[i][k] += exp * (x_derivative[i][k] + val[i][k] * arg);
-                                    y_derivative_buffer[i][k] += exp *  y_derivative[i][k];
+                                    x_derivative_buffer[p][k] += exp * (x_derivative[i][k] + val[i][k] * arg);
+                                    y_derivative_buffer[p][k] += exp *  y_derivative[i][k];
                                 }
 
                             const auto complete = x_derivative_buffer_wrapper.complete();
@@ -1383,9 +1382,9 @@ private:
                                 auto  z_derivative_buffer_wrapper = cdata->z_buffer.get(j);
                                 auto& z_derivative_buffer = z_derivative_buffer_wrapper.data();
 
-                                for (size_t i = 0; i < x_derivative.size(); ++i)
+                                for (size_t i = 0, p = 0; i < x_derivative.size(); i += _owner.col_step, ++p)
                                     for (size_t k = 0; k < x_derivative[i].size(); ++k)
-                                        z_derivative_buffer[i][k] += exp * z_derivative[i][k];
+                                        z_derivative_buffer[p][k] += exp * z_derivative[i][k];
 
                                 z_derivative_buffer_wrapper.complete();
                                 z_derivative_buffer_wrapper.unlock();
