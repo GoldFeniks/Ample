@@ -1031,12 +1031,9 @@ private:
                 for (size_t i = 0; i < _impulse_result->size(); ++i) {
                     const auto d = (tau[i] = std::hypot(receivers[i].x, receivers[i].y) / cw);
 
-                    auto zip = feniks::zip((*_impulse_result)[i], omeg);
-                    std::transform(zip.begin(), zip.end(), _fft->backward_data(),
-                        [&](const auto& v) {
-                            return std::conj(std::get<0>(v) * std::exp(-1i * d * std::get<1>(v)));
-                        }
-                    );
+                    auto& result = (*_impulse_result)[i];
+                    for (size_t j = 0; j < result.size(); ++j)
+                        _fft->backward_data(j) = std::conj(result[j] * std::exp(-1i * d * omeg[j]));
 
                     _fft->execute_backward().normalize_forward();
                     std::memcpy(impulse[i].data(), _fft->forward_data(), _fft->size() * sizeof(types::real_t));
