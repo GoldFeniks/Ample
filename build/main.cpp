@@ -1097,7 +1097,7 @@ private:
 
             _source_spectrum.assign(_fft->backward_data(), config.frequencies().size());
 
-            _max = std::abs(*std::max_element(std::as_const(*_fft).backward_data(), _fft->backward_data_end(),
+            _max = std::abs(*std::max_element(std::as_const(*_fft).backward_data(), std::as_const(*_fft).backward_data() + config.frequencies().size(),
                 [](const auto& a, const auto& b) {
                     return std::abs(a) < std::abs(b);
                 }
