@@ -16,7 +16,9 @@
     "a1":  1.57,
     "coefficients": {
         "type": "ssp",
-        "n": 13
+        "parameters": {
+            "n": 13
+        }
     },
     "input_data": [
         {
