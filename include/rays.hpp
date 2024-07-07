@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <algorithm>
 #include <type_traits>
@@ -12,6 +13,9 @@
 namespace ample::rays {
 
     namespace _impl {
+
+        template<typename T>
+        static constexpr auto inf = std::numeric_limits<T>::infinity();
 
         template<typename T, typename V>
         V calc_derivative_forward(const V& y0, const V& y1, const V& y2, const T& x0, const T& x1, const T& x2) {
@@ -108,6 +112,8 @@ namespace ample::rays {
                 const Arg& x0, const Arg& y0,
                 const Arg& l1, const size_t& nl,
                 const Arg& a0, const Arg& a1, const size_t& na,
+                const Arg& min_x, const Arg& max_x,
+                const Arg& min_y, const Arg& max_y,
                 const FX& fx, const FY& fy, const FT& ft, const FZ& fz, size_t& j, const size_t& nj,
                 C&& callback,
                 const bool& show_progress) {
@@ -121,7 +127,26 @@ namespace ample::rays {
             for (j = 0; j < nj; ++j)
                 for (size_t i = 0; i < na; ++i, ++k) {
                     auto solver = fs(x0, y0, std::cos(mesh_a[i]), std::sin(mesh_a[i]));
-                    for (const auto& [l, x, y, t, z] : solver) {
+
+                    size_t p = 0;
+                    Arg l, x, y, t, z;
+                    for (; p < nl; ++p) {
+                        const auto& value = solver.next();
+
+                        if (std::get<1>(value) < min_x || std::get<1>(value) > max_x ||
+                            std::get<2>(value) < min_y || std::get<2>(value) > max_y) {
+
+                            x = std::clamp(std::get<1>(value), min_x, max_x);
+                            y = std::clamp(std::get<2>(value), min_y, max_y);
+                            break;
+                        }
+
+                        std::tie(l, x, y, t, z) = value;
+                        callback(j, i, k, x, y, mesh_a[i], l);
+                        pbar.next();
+                    }
+
+                    for (; p < nl; ++p) {
                         callback(j, i, k, x, y, mesh_a[i], l);
                         pbar.next();
                     }
@@ -171,11 +196,14 @@ namespace ample::rays {
                     return 0;
             };
 
-            const auto fz = [&kd_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return kd_j[j].point(y);
+            const auto fz = [&k0, &kd_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                    return kd_j[j].point(y) / k0[j];
             };
 
-            _impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), callback, show_progress);
+            const auto min_y = k_j.template get<0>().front();
+            const auto max_y = k_j.template get<0>().back();
+
+            _impl::compute(x0, y0, l1, nl, a0, a1, na, -_impl::inf<Arg>, _impl::inf<Arg>, min_y, max_y, fx, fy, ft, fz, j, k_j.size(), callback, show_progress);
         }
     }
 
@@ -218,15 +246,21 @@ namespace ample::rays {
                     return k0[j] * z / k_j[j].point(x, y);
             };
 
-            const auto ft = [&kdx_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return kdx_j[j].point(x, y);
+            const auto ft = [&k0, &kdx_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                    return kdx_j[j].point(x, y) / k0[j];
             };
 
-            const auto fz = [&kdy_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
-                    return kdy_j[j].point(x, y);
+            const auto fz = [&k0, &kdy_j, &j](const auto& s, const auto& x, const auto& y, const auto& t, const auto& z) {
+                    return kdy_j[j].point(x, y) / k0[j];
             };
 
-            return _impl::compute(x0, y0, l1, nl, a0, a1, na, fx, fy, ft, fz, j, k_j.size(), callback, show_progress);
+            const auto min_x = k_j.template get<0>().front();
+            const auto max_x = k_j.template get<0>().back();
+
+            const auto min_y = k_j.template get<1>().front();
+            const auto max_y = k_j.template get<1>().back();
+
+            return _impl::compute(x0, y0, l1, nl, a0, a1, na, min_x, max_x, min_y, max_y, fx, fy, ft, fz, j, k_j.size(), callback, show_progress);
         }
     }
 
