@@ -307,7 +307,7 @@ namespace ample {
 
                     data.unlock();
 
-                    if (i < _nx)
+                    if (i < _nx - 1)
                         task.push(j, i + 1);
                 }
             );
