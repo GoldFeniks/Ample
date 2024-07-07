@@ -1,0 +1,82 @@
+{
+    "ppm": 20,
+    "n_modes": 32,
+    "y0": -1000,
+    "y1": 1000,
+    "ny": 8001,
+    "x0": 20,
+    "x1": 3020,
+    "nx": 3001,
+    "z0": 9.5,
+    "z1": 10.5,
+    "nz": 3,
+    "mny": 2,
+    "mnx": 101,
+    "z_s": 5,
+    "bottom_layers": [2750],
+    "bottom_rhos": [2],
+    "bottom_c1s": [1700],
+    "bottom_c2s": [1700],
+    "betas": [0, 0.5],
+    "init": "ray_simple",
+    "a0": -1.57,
+    "a1":  1.57,
+    "sel_range": [10, 1000],
+    "sel_strict": true,
+    "reference_index": -1,
+    "const_modes": false,
+    "complex_modes": true,
+    "coefficients": {
+        "type": "ssp",
+        "parameters": {
+            "n": 11
+        }
+    },
+    "input_data": [
+        {
+            "type": "source_function",
+            "dimensions": [
+                {
+                    "n": 10001,
+                    "bounds": {
+                        "a": 0,
+                        "b": 1
+                    }
+                }
+            ],
+            "values": "source.txt"
+        },
+        {
+            "type": "receivers",
+            "dimensions": [ 1 ],
+            "values": [
+                [3000, 0, 10]
+            ]
+        },
+        {
+            "type": "bathymetry",
+            "dimensions": [
+                {
+                    "n": 2,
+                    "bounds": {
+                        "a": 0,
+                        "b": 3000
+                    }
+                },
+                2
+            ],
+            "values": [
+                 [37, 37],
+                 [63, 63]
+            ]
+        },
+        {
+            "type": "hydrology",
+            "dimensions": [ 2, 2 ],
+            "values": [
+                [1500, 1500],
+                [1500, 1500]
+            ]
+        }
+    ]
+}
