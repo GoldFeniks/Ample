@@ -678,7 +678,7 @@ public:
             _save_meta_for("rays", {
                     dimm(),
                     _dimension(config.a0(), config.a1(), config.na(), row_step),
-                    _dimension(config.l0(), config.l1(), config.nl(), col_step)
+                    _dimension(          0, config.l1(), config.nl(), col_step)
                 }, files
             );
 
@@ -1161,7 +1161,7 @@ private:
                     rs=_owner.row_step,
                     cs=_owner.col_step,
                     p=size_t(0),
-                    last_k=size_t(-1)
+                    last_k=size_t(0)
                 ](const auto& j, const auto& i, const auto& k, const auto& x, const auto& y, const auto& a, const auto& l) mutable {
                     if (i % rs != 0)
                         return;
