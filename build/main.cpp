@@ -171,7 +171,7 @@ void print_table(const X& x, const Y& y, const V& values, std::stringstream& str
 
     stream << "        " << sep_line << '\n';
 
-    for (size_t i = 0; i < sv.size(); ++i) {
+    for (size_t i = 0; i < sx.size(); ++i) {
         current = buffer;
         current += sprintf(current, "| %*s |", widths[0], sx[i].c_str());
         for (size_t j = 0; j < sy.size(); ++j)
