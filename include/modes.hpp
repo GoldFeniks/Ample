@@ -451,7 +451,7 @@ namespace ample {
                 std::transform(_config.bottom_layers().begin(), _config.bottom_layers().end(),
                                n_m.M_depths.begin() + _config.n_layers(), [&depth](const auto& z) { return z + depth; });
 
-            _config.hydrology().line(x, T(0), depth, buff);
+            _config.hydrology().line(x, y, T(0), depth, buff);
             std::copy(buff.begin(), buff.end() - 1, n_m.M_c1s.begin());
             std::copy(buff.begin() + 1, buff.end(), n_m.M_c2s.begin());
 

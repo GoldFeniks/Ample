@@ -1016,7 +1016,7 @@ private:
 
             if (has_impulse) {
                 const auto h  = config.bathymetry().point(0, config.y_s());
-                const auto cs = config.hydrology().line(0, 0, h, static_cast<size_t>(h));
+                const auto cs = config.hydrology().line(0, 0, 0, h, static_cast<size_t>(h));
                 const auto cw = config.c_win();
 
                 auto omeg = ample::utils::mesh_1d(0., 1 / config.dt(), _fft->size() + 1);
